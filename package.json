@@ -1,0 +1,31 @@
+{
+  "name": "xihe-seo-aeo",
+  "version": "0.1.0",
+  "description": "SEO + AEO (Answer Engine Optimization) skill by xihe-forge — audit, monitor, and optimize for both traditional search and AI search engines",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "test": "node --test scripts/test.mjs",
+    "crawl": "node scripts/crawl-page.mjs",
+    "citation": "node scripts/check-ai-citation.mjs",
+    "llms-txt": "node scripts/generate-llms-txt.mjs",
+    "gsc": "node scripts/gsc-pull.mjs"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  },
+  "keywords": [
+    "seo",
+    "aeo",
+    "geo",
+    "xihe",
+    "xihe-forge",
+    "claude-code-skill",
+    "ai-search",
+    "llms-txt",
+    "perplexity"
+  ],
+  "license": "MIT"
+}
