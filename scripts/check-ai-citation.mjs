@@ -21,6 +21,7 @@ const { values: args } = parseArgs({
     engines: { type: "string" },
     baseline: { type: "string" },
     output: { type: "string" },
+    competitors: { type: "string" },
     list: { type: "boolean", default: false },
   },
 });
@@ -32,6 +33,10 @@ if (args.list) {
     const status = engine.isAvailable() ? "ready" : `needs ${engine.envKey}`;
     console.log(`  ${name.padEnd(12)} ${status.padEnd(30)} ${engine.setupUrl}`);
   }
+  console.log(`
+Additional flags:
+  --competitors <c1.com,c2.com>   Check if competitor domains are cited alongside your domain
+`);
   process.exit(0);
 }
 
@@ -40,17 +45,22 @@ if (!args.domain || !args.keywords) {
     `Usage: node check-ai-citation.mjs --domain <domain> --keywords <kw1,kw2,...> [options]
 
 Options:
-  --engines <names>    Comma-separated engine list (default: all available)
-                       Available: ${ALL_ENGINE_NAMES.join(", ")}
-  --baseline <path>    Previous result JSON for comparison
-  --output <path>      Write results to file (default: stdout)
-  --list               Show available engines and their status`
+  --engines <names>          Comma-separated engine list (default: all available)
+                             Available: ${ALL_ENGINE_NAMES.join(", ")}
+  --baseline <path>          Previous result JSON for comparison
+  --output <path>            Write results to file (default: stdout)
+  --competitors <domains>    Comma-separated competitor domains to track
+  --list                     Show available engines and their status`
   );
   process.exit(1);
 }
 
 const domain = args.domain.toLowerCase().replace(/^https?:\/\//, "");
 const keywords = args.keywords.split(",").map((k) => k.trim()).filter(Boolean);
+
+const competitorDomains = args.competitors
+  ? args.competitors.split(",").map((c) => c.trim().toLowerCase().replace(/^https?:\/\//, "")).filter(Boolean)
+  : [];
 
 const requestedEngines = args.engines
   ? args.engines.split(",").map((e) => e.trim().toLowerCase())
@@ -79,6 +89,109 @@ if (unavailable.length > 0) {
   }
   process.stderr.write("\n");
 }
+
+// ---------------------------------------------------------------------------
+// Sentiment analysis
+// ---------------------------------------------------------------------------
+
+const POSITIVE_WORDS = [
+  "best", "great", "powerful", "excellent", "recommend", "popular",
+  "leading", "innovative", "好用", "推荐", "优秀", "强大",
+];
+
+const NEGATIVE_WORDS = [
+  "poor", "bad", "issue", "problem", "avoid", "scam",
+  "差", "不好", "骗", "问题",
+];
+
+/**
+ * Extract a window of text around the first occurrence of the domain/brand.
+ * Returns a ~300-character excerpt centred on the match, lower-cased.
+ */
+function extractWindow(content, domain) {
+  const lower = content.toLowerCase();
+  // Try the full domain, then just the brand part (before the first dot)
+  const brand = domain.split(".")[0];
+  const idx = lower.indexOf(domain) !== -1 ? lower.indexOf(domain) : lower.indexOf(brand);
+  if (idx === -1) return null;
+
+  const start = Math.max(0, idx - 150);
+  const end = Math.min(lower.length, idx + 150);
+  return lower.slice(start, end);
+}
+
+/**
+ * Analyse the AI response content for sentiment toward the given domain.
+ * @param {string|null} content  - The snippet / full response text
+ * @param {string}      domain   - Normalised domain (no protocol)
+ * @returns {{ label: "positive"|"neutral"|"negative"|null, reason: string|null }}
+ */
+export function analyzeSentiment(content, domain) {
+  if (!content || typeof content !== "string") {
+    return { label: null, reason: null };
+  }
+
+  const window = extractWindow(content, domain);
+  if (window === null) {
+    return { label: null, reason: null };
+  }
+
+  // Check positive words first
+  for (const word of POSITIVE_WORDS) {
+    if (window.includes(word.toLowerCase())) {
+      return {
+        label: "positive",
+        reason: `Detected positive indicator "${word}" near domain mention`,
+      };
+    }
+  }
+
+  // Check negative words
+  for (const word of NEGATIVE_WORDS) {
+    if (window.includes(word.toLowerCase())) {
+      return {
+        label: "negative",
+        reason: `Detected negative indicator "${word}" near domain mention`,
+      };
+    }
+  }
+
+  // Domain mentioned but no strong sentiment words
+  return {
+    label: "neutral",
+    reason: "Domain mentioned without strong positive or negative indicators",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Competitor check (reuses data already returned by engine.query)
+// ---------------------------------------------------------------------------
+
+/**
+ * Check whether a competitor domain appears in the citation URLs or snippet
+ * returned by a single engine result.
+ * @param {{ cited: boolean, urls: string[], snippet: string|null }} engineResult
+ * @param {string} competitorDomain
+ * @returns {{ cited: boolean, urls: string[] }}
+ */
+function checkCompetitor(engineResult, competitorDomain) {
+  const urls = (engineResult.urls || []).filter(
+    (u) => typeof u === "string" && u.toLowerCase().includes(competitorDomain)
+  );
+  const citedInSnippet =
+    engineResult.snippet &&
+    typeof engineResult.snippet === "string" &&
+    engineResult.snippet.toLowerCase().includes(competitorDomain);
+
+  return {
+    cited: urls.length > 0 || !!citedInSnippet,
+    urls,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// No-engines path: template baseline
+// ---------------------------------------------------------------------------
 
 if (engines.length === 0) {
   process.stderr.write("No engines available. Generating template baseline.\n\n");
@@ -120,7 +233,11 @@ async function main() {
 
   const engineNames = engines.map((e) => e.name);
   process.stderr.write(`Engines: ${engineNames.join(", ")}\n`);
-  process.stderr.write(`Keywords: ${keywords.length}\n\n`);
+  process.stderr.write(`Keywords: ${keywords.length}\n`);
+  if (competitorDomains.length > 0) {
+    process.stderr.write(`Competitors: ${competitorDomains.join(", ")}\n`);
+  }
+  process.stderr.write("\n");
 
   const keywordResults = [];
 
@@ -136,17 +253,46 @@ async function main() {
       process.stderr.write(`[${i + 1}/${keywords.length}] ${engine.name}: "${kw}" ... `);
 
       try {
-        const result = await engine.query(kw, domain);
-        results[engine.name] = result;
-        process.stderr.write(result.cited ? "CITED\n" : "not cited\n");
+        const engineResult = await engine.query(kw, domain);
+
+        // Attach sentiment when domain is cited
+        if (engineResult.cited || engineResult.snippet) {
+          const sentiment = analyzeSentiment(engineResult.snippet || "", domain);
+          if (sentiment.label !== null) {
+            engineResult.sentiment = sentiment;
+          }
+        }
+
+        results[engine.name] = engineResult;
+        process.stderr.write(engineResult.cited ? "CITED\n" : "not cited\n");
       } catch (err) {
         results[engine.name] = { cited: false, urls: [], snippet: null, error: err.message };
         process.stderr.write(`ERROR: ${err.message}\n`);
       }
     }
 
-    keywordResults.push({ keyword: kw, results });
+    const kwEntry = { keyword: kw, results };
+
+    // Competitor analysis (no extra API calls — reuse engine results)
+    if (competitorDomains.length > 0) {
+      const competitors = {};
+      for (const comp of competitorDomains) {
+        const compEngineResults = {};
+        for (const engine of engines) {
+          const engineResult = results[engine.name];
+          compEngineResults[engine.name] = checkCompetitor(engineResult, comp);
+        }
+        competitors[comp] = compEngineResults;
+      }
+      kwEntry.competitors = competitors;
+    }
+
+    keywordResults.push(kwEntry);
   }
+
+  // ---------------------------------------------------------------------------
+  // Summary
+  // ---------------------------------------------------------------------------
 
   const perEngine = {};
   for (const engine of engines) {
@@ -161,6 +307,40 @@ async function main() {
     Object.values(k.results).some((r) => r.cited === true)
   ).length;
 
+  // Sentiment breakdown (across all keyword+engine pairs that have a sentiment)
+  const sentimentBreakdown = { positive: 0, neutral: 0, negative: 0 };
+  let hasSentiment = false;
+  for (const kwEntry of keywordResults) {
+    for (const engineResult of Object.values(kwEntry.results)) {
+      if (engineResult.sentiment?.label) {
+        hasSentiment = true;
+        sentimentBreakdown[engineResult.sentiment.label] =
+          (sentimentBreakdown[engineResult.sentiment.label] || 0) + 1;
+      }
+    }
+  }
+
+  // Competitor citation rates
+  let competitorComparison;
+  if (competitorDomains.length > 0) {
+    competitorComparison = {};
+    for (const comp of competitorDomains) {
+      let compCitedKeywords = 0;
+      for (const kwEntry of keywordResults) {
+        const citedInAnyEngine = Object.values(kwEntry.competitors?.[comp] || {}).some(
+          (r) => r.cited === true
+        );
+        if (citedInAnyEngine) compCitedKeywords++;
+      }
+      competitorComparison[comp] = {
+        citationRate:
+          keywords.length > 0
+            ? Math.round((compCitedKeywords / keywords.length) * 100) / 100
+            : 0,
+      };
+    }
+  }
+
   const diff = baseline ? computeDiff(baseline, keywordResults, engineNames) : null;
 
   if (diff) {
@@ -174,17 +354,27 @@ async function main() {
     }
   }
 
+  const summary = {
+    totalKeywords: keywords.length,
+    perEngine,
+    overallCitationRate:
+      keywords.length > 0 ? Math.round((totalCited / keywords.length) * 100) / 100 : 0,
+  };
+
+  if (hasSentiment) {
+    summary.sentimentBreakdown = sentimentBreakdown;
+  }
+
+  if (competitorComparison) {
+    summary.competitorComparison = competitorComparison;
+  }
+
   const output = {
     domain,
     checkedAt: new Date().toISOString(),
     engines: engineNames,
     keywords: keywordResults,
-    summary: {
-      totalKeywords: keywords.length,
-      perEngine,
-      overallCitationRate:
-        keywords.length > 0 ? Math.round((totalCited / keywords.length) * 100) / 100 : 0,
-    },
+    summary,
     diff,
   };
 

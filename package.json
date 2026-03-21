@@ -1,7 +1,7 @@
 {
-  "name": "xihe-seo-aeo",
+  "name": "xihe-search-forge",
   "version": "0.1.0",
-  "description": "SEO + AEO (Answer Engine Optimization) skill by xihe-forge — audit, monitor, and optimize for both traditional search and AI search engines",
+  "description": "SEO + AEO + GEO search optimization forge by xihe-forge — audit, monitor, and optimize for both traditional search and AI search engines",
   "type": "module",
   "engines": {
     "node": ">=20.0.0"
@@ -11,7 +11,8 @@
     "crawl": "node scripts/crawl-page.mjs",
     "citation": "node scripts/check-ai-citation.mjs",
     "llms-txt": "node scripts/generate-llms-txt.mjs",
-    "gsc": "node scripts/gsc-pull.mjs"
+    "gsc": "node scripts/gsc-pull.mjs",
+    "lighthouse": "node scripts/lighthouse-pull.mjs"
   },
   "dependencies": {
     "cheerio": "^1.0.0"
@@ -20,9 +21,9 @@
     "seo",
     "aeo",
     "geo",
+    "search-forge",
     "xihe",
     "xihe-forge",
-    "claude-code-skill",
     "ai-search",
     "llms-txt",
     "perplexity"

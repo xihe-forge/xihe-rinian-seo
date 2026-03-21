@@ -359,7 +359,110 @@ describe("generate-llms-txt.mjs", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Engine modules
+// 4. lighthouse-pull.mjs
+// ---------------------------------------------------------------------------
+
+describe("lighthouse-pull.mjs", () => {
+  test("exits with error and prints usage when --url is missing", async () => {
+    try {
+      await runScript("lighthouse-pull.mjs", []);
+      assert.fail("Expected non-zero exit when --url is missing");
+    } catch (err) {
+      assert.ok(err.code !== 0, "Should exit with non-zero code");
+      assert.ok(
+        err.stderr?.includes("Usage") || err.stderr?.includes("--url"),
+        `stderr should mention usage/--url. Got: ${err.stderr?.slice(0, 200)}`
+      );
+    }
+  });
+
+  test("exits with error and hints when invalid --strategy is given", async () => {
+    try {
+      await runScript("lighthouse-pull.mjs", [
+        "--url", "https://example.com",
+        "--strategy", "tablet",
+      ]);
+      assert.fail("Expected non-zero exit for invalid strategy");
+    } catch (err) {
+      assert.ok(err.code !== 0, "Should exit with non-zero code");
+      assert.ok(
+        err.stderr?.includes("strategy") || err.stderr?.includes("mobile") || err.stderr?.includes("desktop"),
+        `stderr should mention strategy options. Got: ${err.stderr?.slice(0, 200)}`
+      );
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. check-ai-citation.mjs — --competitors flag
+// ---------------------------------------------------------------------------
+
+describe("check-ai-citation.mjs — --competitors flag", () => {
+  test(
+    "template output still produces valid JSON when --competitors is given (no-API-key path)",
+    { timeout: 20_000 },
+    async () => {
+      const safeEnv = {
+        PERPLEXITY_API_KEY: "",
+        OPENAI_API_KEY: "",
+        GEMINI_API_KEY: "",
+        MOONSHOT_API_KEY: "",
+        YOU_API_KEY: "",
+      };
+
+      const { stdout, stderr } = await runScript(
+        "check-ai-citation.mjs",
+        [
+          "--domain", "example.com",
+          "--keywords", "test query",
+          "--competitors", "rival.com,other.com",
+        ],
+        safeEnv
+      );
+
+      // Must still produce valid JSON even when competitors are supplied but no engines run
+      let result;
+      try {
+        result = JSON.parse(stdout);
+      } catch {
+        assert.fail(`stdout is not valid JSON. Got:\n${stdout.slice(0, 500)}`);
+      }
+
+      // Core fields must still be present
+      for (const field of ["domain", "checkedAt", "engines", "keywords", "summary"]) {
+        assert.ok(
+          Object.prototype.hasOwnProperty.call(result, field),
+          `Missing field: ${field}`
+        );
+      }
+
+      // When engines run and competitors are supplied, each keyword entry gets a competitors
+      // sub-object keyed by competitor domain. In no-API-key template mode, the per-keyword
+      // competitors key is omitted — but the competitor domains should still appear in stderr
+      // (logged as "Competitors: rival.com, other.com" when engines are configured).
+      // We just assert the output is valid and the domain is correct.
+      assert.equal(result.domain, "example.com");
+    }
+  );
+
+  test("--list output mentions --competitors flag", { timeout: 10_000 }, async () => {
+    const safeEnv = {
+      PERPLEXITY_API_KEY: "",
+      OPENAI_API_KEY: "",
+      GEMINI_API_KEY: "",
+      MOONSHOT_API_KEY: "",
+      YOU_API_KEY: "",
+    };
+    const { stdout } = await runScript("check-ai-citation.mjs", ["--list"], safeEnv);
+    assert.ok(
+      stdout.includes("--competitors"),
+      '--list output should mention the --competitors flag'
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Engine modules
 // ---------------------------------------------------------------------------
 
 describe("engine modules", () => {

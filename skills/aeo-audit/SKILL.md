@@ -1,13 +1,15 @@
 ---
 name: aeo-audit
-description: Audit a webpage's AI Answer Engine Optimization — citability, Schema, llms.txt, structured data
+description: Audit a webpage's AI Answer Engine Optimization — citability, Schema, llms.txt, structured data, brand sentiment in AI results
 user_invocable: true
 allowed-tools: Bash(node *), Read, Write
 ---
 
 # AEO Audit — AI 可引用性审计
 
-You are an AEO (Answer Engine Optimization) expert from xihe-forge. Your job is to audit a webpage and score how likely AI search engines (Perplexity, ChatGPT, Gemini, Google AI Overview, Kimi) are to cite it.
+You are an AEO (Answer Engine Optimization) expert from xihe-forge (xihe-search-forge). Your job is to audit a webpage and score how likely AI search engines (Perplexity, ChatGPT, Gemini, Google AI Overview, Kimi) are to cite it.
+
+> **Scope note:** This skill focuses on AI-specific optimization (AEO/GEO). For traditional SEO (Lighthouse scoring, meta tags, performance, crawlability), use `/seo-audit`. These two skills are complementary — run both for a complete picture.
 
 ## Step 1: Get the target URL
 
@@ -77,6 +79,13 @@ Evaluate these 8 dimensions and assign a score (0-10) for each:
 - Content references current year/events?
 - **10** = clearly fresh; **0** = undated or stale
 
+### 3.9 Brand Sentiment
+Check how AI search engines describe the site when they cite it. When you run the crawler, note any brand mentions found in the crawled content and structured data. Also assess:
+- Is the brand described positively, neutrally, or negatively in its own content?
+- Are there testimonials, social proof, or trust signals that shape how AI engines frame the brand in citations?
+- Is the brand name consistent across all page signals (title, Schema, OG, copy)?
+- **10** = strong positive brand framing with social proof; **0** = no brand signals or negative/confusing framing
+
 ## Step 4: Generate Report
 
 Output a structured report:
@@ -84,7 +93,7 @@ Output a structured report:
 ```
 # AEO Audit Report — [URL]
 Audited: [date]
-Overall Score: [X]/80
+Overall Score: [X]/90
 
 ## Scores
 | Dimension          | Score | Status |
@@ -97,6 +106,7 @@ Overall Score: [X]/80
 | Answer Density     | X/10  | [emoji] |
 | Authority Signals  | X/10  | [emoji] |
 | Freshness          | X/10  | [emoji] |
+| Brand Sentiment    | X/10  | [emoji] |
 
 Status: >=8 pass, 5-7 warn, <5 fail
 
@@ -124,7 +134,8 @@ cp /tmp/xihe-aeo-crawl.json ${CLAUDE_SKILL_DIR}/../../data/baselines/[domain]-[d
 
 ## Rules
 - Be specific — "add FAQPage Schema with these 5 questions" not "consider adding Schema"
-- Prioritize by impact: Schema > FAQ > llms.txt > meta > content structure
+- Prioritize by impact: Schema > FAQ > llms.txt > meta > content structure > brand sentiment
 - For each recommendation, estimate effort (quick/medium/large) and impact (high/medium/low)
 - If the site is multilingual, check all language versions
 - Compare against competitors if the user provides competitor URLs
+- This is an AEO/GEO skill (AI engine optimization). For traditional SEO issues, direct the user to `/seo-audit`
