@@ -170,7 +170,14 @@ function analyzeStatistics(allText) {
   const seenMatches = new Set();
 
   for (const pattern of STAT_PATTERNS) {
-    const matches = allText.match(pattern) || [];
+    let matches = allText.match(pattern) || [];
+    // Filter out standalone years (1900-2099) that aren't in a data context
+    matches = matches.filter(m => {
+      const yearMatch = m.match(/^\d{4}$/);
+      if (!yearMatch) return true;
+      const year = parseInt(yearMatch[0]);
+      return year < 1900 || year > 2099;
+    });
     for (const m of matches) {
       if (!seenMatches.has(m)) {
         seenMatches.add(m);
@@ -335,7 +342,9 @@ function analyzeTechnicalTerms(allText) {
   let vagueCount = 0;
   const foundVague = [];
   for (const term of VAGUE_TERMS) {
-    const pattern = new RegExp(`\\b${term}\\b`, "gi");
+    // If term contains CJK characters, don't use \b (it doesn't work for CJK)
+    const hasCJK = /[\u3000-\u9fff\uf900-\ufaff]/.test(term);
+    const pattern = hasCJK ? new RegExp(term, "gi") : new RegExp(`\\b${term}\\b`, "gi");
     const matches = allText.match(pattern) || [];
     if (matches.length > 0) {
       vagueCount += matches.length;
@@ -652,7 +661,13 @@ async function crawlAndEnrich(url) {
   }
 
   // Dynamic cheerio import — only loads when --url path is used
-  const { load } = await import("cheerio");
+  let load;
+  try {
+    ({ load } = await import("cheerio"));
+  } catch {
+    process.stderr.write("Error: --url mode requires cheerio. Run: npm install cheerio\n");
+    process.exit(1);
+  }
   const $ = load(pageText);
 
   // Remove non-content elements

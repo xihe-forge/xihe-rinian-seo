@@ -24,6 +24,7 @@ SEO + AEO + GEO 一站式搜索优化工具，by [xihe-forge](https://github.com
 ```
 xihe-search-forge/
 ├── scripts/
+│   ├── audit.mjs                    # 一键全套审计入口（npx xihe-search-forge）
 │   ├── lighthouse-pull.mjs         # Google Lighthouse 集成（免认证）
 │   ├── crawl-page.mjs              # 页面爬取与 AEO/SEO 信号提取
 │   ├── check-ai-citation.mjs       # AI 引用检测（5 引擎 + 情感 + 竞品）
@@ -34,6 +35,7 @@ xihe-search-forge/
 │   ├── share-of-voice.mjs          # AI 声量份额对比（多品牌 + 多关键词）
 │   ├── freshness-check.mjs         # 内容新鲜度检测（sitemap + 页面日期信号）
 │   ├── negative-geo-detect.mjs     # 负面 GEO 监测（情感变化 + 协同攻击）
+│   ├── test.mjs                     # 测试套件（48 tests）
 │   └── engines/                    # 各 AI 引擎适配器
 │       ├── perplexity.mjs
 │       ├── chatgpt.mjs
@@ -41,10 +43,16 @@ xihe-search-forge/
 │       ├── kimi.mjs
 │       └── youcom.mjs
 ├── skills/
-│   ├── aeo-audit/SKILL.md          # /aeo-audit slash command
-│   ├── seo-audit/SKILL.md          # /seo-audit slash command
-│   ├── aeo-monitor/SKILL.md        # /aeo-monitor slash command
-│   └── seo-report/SKILL.md         # /seo-report slash command
+│   ├── search-forge/SKILL.md              # /search-forge 一键全套
+│   ├── search-forge-seo/SKILL.md          # /search-forge:seo
+│   ├── search-forge-aeo/SKILL.md          # /search-forge:aeo
+│   ├── search-forge-citation/SKILL.md     # /search-forge:citation
+│   ├── search-forge-content/SKILL.md      # /search-forge:content
+│   ├── search-forge-presence/SKILL.md     # /search-forge:presence
+│   ├── search-forge-freshness/SKILL.md    # /search-forge:freshness
+│   ├── search-forge-voice/SKILL.md        # /search-forge:voice
+│   ├── search-forge-defense/SKILL.md      # /search-forge:defense
+│   └── search-forge-report/SKILL.md       # /search-forge:report
 └── data/baselines/                 # 历史数据存储
 ```
 
@@ -57,6 +65,60 @@ git clone https://github.com/xihe-forge/xihe-search-forge.git
 cd xihe-search-forge
 pnpm install   # 或 npm install
 ```
+
+---
+
+## npx 使用（无需 clone）
+
+```bash
+npx xihe-search-forge --url https://yoursite.com --brand "YourBrand"
+
+# 短命令
+npx xsf --url https://yoursite.com
+```
+
+---
+
+## 快速开始
+
+一个命令，全套审计：
+
+```bash
+npm run audit -- --url https://yoursite.com --brand "YourBrand"
+
+# 完整参数
+npm run audit -- \
+  --url https://yoursite.com \
+  --brand "YourBrand" \
+  --keywords "关键词1,关键词2" \
+  --competitors "competitor1.com,competitor2.com" \
+  --output report.json
+```
+
+输出包含：Lighthouse SEO 基线、页面信号分析、GEO 内容优化建议、平台存在度、内容新鲜度、AI 引用检测（需 API Key）。
+
+如需单独使用某个工具，见下方各工具详细说明。
+
+---
+
+## 快捷命令
+
+所有工具均可通过 npm scripts 调用：
+
+| 命令 | 对应脚本 |
+|------|---------|
+| `npm run audit` | audit.mjs（一键全套） |
+| `npm run crawl` | crawl-page.mjs |
+| `npm run citation` | check-ai-citation.mjs |
+| `npm run lighthouse` | lighthouse-pull.mjs |
+| `npm run llms-txt` | generate-llms-txt.mjs |
+| `npm run gsc` | gsc-pull.mjs |
+| `npm run content-optimize` | content-optimize.mjs |
+| `npm run platform-presence` | platform-presence.mjs |
+| `npm run share-of-voice` | share-of-voice.mjs |
+| `npm run freshness` | freshness-check.mjs |
+| `npm run negative-geo` | negative-geo-detect.mjs |
+| `npm test` | 运行全部测试 |
 
 ---
 
@@ -78,7 +140,9 @@ node scripts/lighthouse-pull.mjs \
   --output data/baselines/lighthouse-latest.json
 ```
 
-输出包含：Performance、Accessibility、Best Practices、SEO 四项得分，以及 Core Web Vitals（LCP、CLS、FID）。
+输出包含：Performance、Accessibility、Best Practices、SEO 四项得分，以及各审计项通过/失败明细。
+
+默认检查 `seo` 和 `best-practices`，可通过 `--categories` 指定更多类别（如 `performance,accessibility`）。
 
 ---
 
@@ -177,6 +241,24 @@ node scripts/generate-llms-txt.mjs \
 同时生成两个文件：
 - `llms.txt` — 简洁版（链接 + 一行描述）
 - `llms-full.txt` — 详细版（每页 2–3 句摘要）
+
+---
+
+### 5. GSC 数据拉取 — `gsc-pull.mjs`
+
+拉取 GSC 搜索分析数据，建立传统 SEO 基线。
+
+```bash
+# 方式一：服务账号
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+node scripts/gsc-pull.mjs --site https://yoursite.com --days 28
+
+# 方式二：OAuth token
+export GSC_ACCESS_TOKEN=ya29.xxxx
+node scripts/gsc-pull.mjs --site https://yoursite.com --days 28 --output data/baselines/gsc-latest.json
+```
+
+无凭据时会打印详细的设置指南。
 
 ---
 
@@ -306,64 +388,42 @@ node scripts/negative-geo-detect.mjs \
 
 ---
 
-### 5. Google Search Console 数据拉取 — `gsc-pull.mjs`
+## Skills（Claude Code 集成）
 
-拉取 GSC 搜索分析数据，建立传统 SEO 基线。
-
+安装方式：
 ```bash
-# 方式一：服务账号
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
-node scripts/gsc-pull.mjs --site https://yoursite.com --days 28
+# 全部安装（推荐）
+cp -r skills/*/ ~/.claude/skills/
 
-# 方式二：OAuth token
-export GSC_ACCESS_TOKEN=ya29.xxxx
-node scripts/gsc-pull.mjs --site https://yoursite.com --days 28 --output data/baselines/gsc-latest.json
+# 或安装单个
+cp -r skills/search-forge/ ~/.claude/skills/search-forge/
 ```
 
-无凭据时会打印详细的设置指南。
-
----
-
-## Skills
-
-如果你使用 Claude Code，可以将 `skills/` 下的目录安装为 slash command：
-
-```bash
-# 个人使用（所有项目可用）
-cp -r skills/<name>/ ~/.claude/skills/<name>/
-
-# 项目级安装（仅当前项目可用）
-cp -r skills/<name>/ <project>/.claude/skills/<name>/
-```
-
-### `/aeo-audit` — AI 可引用性审计
-
-对任意页面进行 8 维度 AEO 评分（满分 80）：Schema 结构化数据、内容结构、FAQ、AI 爬虫访问、Meta 标签、答案密度、权威信号、内容新鲜度。
-
-### `/seo-audit` — 全站 SEO 审计
-
-技术 SEO + 内容 SEO 双重审计（满分 100），整合 Lighthouse 数据：Meta 标签、标题层级、图片 alt、Schema、Core Web Vitals、内容质量、E-E-A-T 信号。
-
-### `/aeo-monitor` — AI 搜索引用监测
-
-跟踪域名在 AI 搜索中的引用变化：定期检测 → 存基线 → 对比变化。发现新增 / 丢失引用，并针对未被引用的关键词给出优化建议。
-
-### `/seo-report` — 反馈闭环对比报告
-
-对比两次审计快照，量化优化效果：AEO 分数维度级拆解、AI 引用率变化趋势（跨引擎汇总）、GSC 数据对比（排名、点击、CTR）、Lighthouse 得分前后对比、自动标记已修复项 / 新发现问题。
+| 命令 | 功能 |
+|------|------|
+| `/search-forge` | **一键全套审计** — 输入 URL，输出综合报告 |
+| `/search-forge:seo` | SEO 审计（Lighthouse + 页面信号） |
+| `/search-forge:aeo` | AEO 审计（AI 可引用性 8 维度评分） |
+| `/search-forge:citation` | AI 引用监测（5 引擎 + 情感 + 竞品） |
+| `/search-forge:content` | GEO 内容优化建议（Princeton 论文） |
+| `/search-forge:presence` | 平台存在度检测（8 大平台） |
+| `/search-forge:freshness` | 内容新鲜度检测 |
+| `/search-forge:voice` | AI 声量占比对比 |
+| `/search-forge:defense` | 负面 GEO 防御检测 |
+| `/search-forge:report` | 前后对比报告（反馈闭环） |
 
 ---
 
 ## 反馈闭环
 
 ```
-审计（baseline） → 优化 → 再次审计 → /seo-report 对比 → 调整 → ...
+审计（baseline） → 优化 → 再次审计 → /search-forge:report 对比 → 调整 → ...
 ```
 
-1. 首次运行 `/seo-audit` + `/aeo-audit`，得到完整基线（含 Lighthouse 得分）
+1. 首次运行 `/search-forge:seo` + `/search-forge:aeo`，得到完整基线（含 Lighthouse 得分）
 2. 按建议修复（添加 Schema、生成 llms.txt、优化内容结构、修复 Core Web Vitals）
-3. 再次审计，用 `/seo-report` 对比两次快照
-4. 运行 `/aeo-monitor`，持续追踪 AI 搜索引用率和品牌情感变化
+3. 再次审计，用 `/search-forge:report` 对比两次快照
+4. 运行 `/search-forge:citation`，持续追踪 AI 搜索引用率和品牌情感变化
 
 所有历史数据存储在 `data/baselines/` 目录下。
 

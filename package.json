@@ -6,6 +6,10 @@
   "engines": {
     "node": ">=20.0.0"
   },
+  "bin": {
+    "xihe-search-forge": "./scripts/audit.mjs",
+    "xsf": "./scripts/audit.mjs"
+  },
   "scripts": {
     "test": "node --test scripts/test.mjs",
     "crawl": "node scripts/crawl-page.mjs",
@@ -17,7 +21,8 @@
     "platform-presence": "node scripts/platform-presence.mjs",
     "share-of-voice": "node scripts/share-of-voice.mjs",
     "freshness": "node scripts/freshness-check.mjs",
-    "negative-geo": "node scripts/negative-geo-detect.mjs"
+    "negative-geo": "node scripts/negative-geo-detect.mjs",
+    "audit": "node scripts/audit.mjs"
   },
   "dependencies": {
     "cheerio": "^1.0.0"

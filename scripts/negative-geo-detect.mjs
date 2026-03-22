@@ -37,11 +37,12 @@ Options:
   process.exit(1);
 }
 
-const domain = args.domain.toLowerCase().replace(/^https?:\/\//, "");
+// Fix 4: strip trailing slashes from domain normalization
+const domain = args.domain.toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
 const keywords = args.keywords.split(",").map((k) => k.trim()).filter(Boolean);
 
 // ---------------------------------------------------------------------------
-// Sentiment analysis
+// Sentiment analysis constants
 // ---------------------------------------------------------------------------
 
 const POSITIVE_WORDS = [
@@ -61,6 +62,10 @@ const ATTACK_SIGNALS = [
   "replaced by", "outdated", "security concern", "data breach",
   "比...好", "替代", "别用", "已弃用", "安全隐患",
 ];
+
+// ---------------------------------------------------------------------------
+// ALL function definitions — before any top-level execution
+// ---------------------------------------------------------------------------
 
 /**
  * Extract a window of text around the first occurrence of the domain/brand.
@@ -137,10 +142,6 @@ function analyzeSentiment(content, domain) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -153,19 +154,93 @@ function extractDomain(url) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Load baseline
-// ---------------------------------------------------------------------------
-
-let baseline;
-try {
-  baseline = JSON.parse(readFileSync(args.baseline, "utf8"));
-} catch (err) {
-  process.stderr.write(`Failed to load baseline: ${err.message}\n`);
-  process.exit(1);
+function countBySeverity(alerts) {
+  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const a of alerts) {
+    if (counts[a.severity] !== undefined) counts[a.severity]++;
+  }
+  return counts;
 }
 
-const baselineDate = baseline.checkedAt ?? null;
+function computeRiskLevel(alerts, suspiciousSources) {
+  if (alerts.some((a) => a.severity === "critical")) return "critical";
+
+  const highCount = alerts.filter((a) => a.severity === "high").length;
+  const mediumCount = alerts.filter((a) => a.severity === "medium").length;
+  const lowCount = alerts.filter((a) => a.severity === "low").length;
+
+  const sentimentShifts = alerts.filter((a) => a.type === "sentiment_shift").length;
+  const newNegSources = alerts.filter((a) => a.type === "new_negative_source").length;
+
+  if (highCount >= 2 || sentimentShifts >= 2 || (newNegSources > 0 && highCount > 0)) return "high";
+  if (mediumCount >= 2 || highCount >= 1 || sentimentShifts >= 1) return "medium";
+  if (lowCount >= 1 || mediumCount >= 1) return "low";
+  return "low";
+}
+
+// Fix 3: correct filter logic in generateRecommendations
+function generateRecommendations(alerts, suspiciousSources, domain, keywords) {
+  const recs = [];
+
+  for (const src of suspiciousSources) {
+    const related = alerts.filter(
+      (a) => a.sourceUrl?.includes(src) || a.occurrences?.some((o) => o.sourceUrl?.includes(src))
+    );
+    const engines = [...new Set(related.map(a => a.engine).filter(Boolean))];
+    const engineInfo = engines.length > 0 ? ` (${engines.join(", ")})` : "";
+    recs.push(
+      `Investigate ${src} — appeared in ${related.length} negative citation(s)${engineInfo}`
+    );
+  }
+
+  const shiftedKeywords = [...new Set(alerts.filter((a) => a.type === "sentiment_shift").map((a) => a.keyword))];
+  for (const kw of shiftedKeywords) {
+    recs.push(
+      `Publish fresh positive content targeting "${kw}" to counter detected negative sentiment shift`
+    );
+  }
+
+  const lostKeywords = [...new Set(alerts.filter((a) => a.type === "citation_lost").map((a) => `${a.keyword} (${a.engine})`))];
+  for (const kwEngine of lostKeywords) {
+    recs.push(
+      `Monitor citation for ${kwEngine} — displacement detected`
+    );
+  }
+
+  const attackKeywords = [...new Set(
+    alerts.filter((a) => a.attackSignals?.length > 0 || a.current?.attackSignals?.length > 0).map((a) => a.keyword)
+  )];
+  for (const kw of attackKeywords) {
+    recs.push(
+      `Attack language patterns detected for "${kw}" — consider GEO content hardening (publish authoritative sources)`
+    );
+  }
+
+  if (alerts.some((a) => a.type === "coordinated_attack" || a.type === "cross_engine_source")) {
+    recs.push(
+      "Coordinated negative seeding detected — consider filing a dispute or legal notice against identified domains"
+    );
+    recs.push(
+      `Publish high-authority content for ${domain} to reclaim citation rankings across affected engines`
+    );
+  }
+
+  if (recs.length === 0 && alerts.length === 0) {
+    recs.push("No negative signals detected. Continue routine monitoring.");
+  }
+
+  return recs;
+}
+
+function outputResult(result) {
+  const json = JSON.stringify(result, null, 2);
+  if (args.output) {
+    writeFileSync(args.output, json, "utf8");
+    process.stderr.write(`Results written to ${args.output}\n`);
+  } else {
+    process.stdout.write(json + "\n");
+  }
+}
 
 // Build a lookup: { keyword -> { engineName -> { cited, sentiment, urls } } }
 function buildBaselineLookup(baseline) {
@@ -184,21 +259,39 @@ function buildBaselineLookup(baseline) {
   return lookup;
 }
 
+// ---------------------------------------------------------------------------
+// Load baseline
+// ---------------------------------------------------------------------------
+
+let baseline;
+try {
+  baseline = JSON.parse(readFileSync(args.baseline, "utf8"));
+} catch (err) {
+  process.stderr.write(`Failed to load baseline: ${err.message}\n`);
+  process.exit(1);
+}
+
+const baselineDate = baseline.checkedAt ?? null;
 const baselineLookup = buildBaselineLookup(baseline);
 
 // ---------------------------------------------------------------------------
 // Load engines
+// Fix 2: wrap importEngine calls in try/catch
 // ---------------------------------------------------------------------------
 
 const engines = [];
 const unavailableEngines = [];
 
 for (const name of ALL_ENGINE_NAMES) {
-  const engine = await importEngine(name);
-  if (engine.isAvailable()) {
-    engines.push(engine);
-  } else {
-    unavailableEngines.push({ name, envKey: engine.envKey, setupUrl: engine.setupUrl });
+  try {
+    const engine = await importEngine(name);
+    if (engine.isAvailable()) {
+      engines.push(engine);
+    } else {
+      unavailableEngines.push({ name, envKey: engine.envKey, setupUrl: engine.setupUrl });
+    }
+  } catch (err) {
+    process.stderr.write(`Warning: failed to load engine "${name}": ${err.message}\n`);
   }
 }
 
@@ -496,14 +589,6 @@ for (const currEntry of currentResults) {
 // Summary
 // ---------------------------------------------------------------------------
 
-function countBySeverity(alerts) {
-  const counts = { critical: 0, high: 0, medium: 0, low: 0 };
-  for (const a of alerts) {
-    if (counts[a.severity] !== undefined) counts[a.severity]++;
-  }
-  return counts;
-}
-
 const bySeverity = countBySeverity(alerts);
 
 // Sentiment trend: baseline vs current
@@ -542,82 +627,10 @@ for (const currEntry of currentResults) {
 const uniqueSuspiciousSources = [...new Set(suspiciousSources)];
 
 // ---------------------------------------------------------------------------
-// Risk level
+// Risk level & recommendations
 // ---------------------------------------------------------------------------
-
-function computeRiskLevel(alerts, suspiciousSources) {
-  if (alerts.some((a) => a.severity === "critical")) return "critical";
-
-  const highCount = alerts.filter((a) => a.severity === "high").length;
-  const mediumCount = alerts.filter((a) => a.severity === "medium").length;
-  const lowCount = alerts.filter((a) => a.severity === "low").length;
-
-  const sentimentShifts = alerts.filter((a) => a.type === "sentiment_shift").length;
-  const newNegSources = alerts.filter((a) => a.type === "new_negative_source").length;
-
-  if (highCount >= 2 || sentimentShifts >= 2 || (newNegSources > 0 && highCount > 0)) return "high";
-  if (mediumCount >= 2 || highCount >= 1 || sentimentShifts >= 1) return "medium";
-  if (lowCount >= 1 || mediumCount >= 1) return "low";
-  return "low";
-}
 
 const riskLevel = computeRiskLevel(alerts, uniqueSuspiciousSources);
-
-// ---------------------------------------------------------------------------
-// Recommendations
-// ---------------------------------------------------------------------------
-
-function generateRecommendations(alerts, suspiciousSources, domain, keywords) {
-  const recs = [];
-
-  for (const src of suspiciousSources) {
-    const occurrences = alerts.filter(
-      (a) => a.sourceUrl?.includes(src) || a.occurrences?.some((o) => o) // cross-engine alerts
-    );
-    recs.push(
-      `Investigate ${src} — appeared in multiple negative citations across engines`
-    );
-  }
-
-  const shiftedKeywords = [...new Set(alerts.filter((a) => a.type === "sentiment_shift").map((a) => a.keyword))];
-  for (const kw of shiftedKeywords) {
-    recs.push(
-      `Publish fresh positive content targeting "${kw}" to counter detected negative sentiment shift`
-    );
-  }
-
-  const lostKeywords = [...new Set(alerts.filter((a) => a.type === "citation_lost").map((a) => `${a.keyword} (${a.engine})`))];
-  for (const kwEngine of lostKeywords) {
-    recs.push(
-      `Monitor citation for ${kwEngine} — displacement detected`
-    );
-  }
-
-  const attackKeywords = [...new Set(
-    alerts.filter((a) => a.attackSignals?.length > 0 || a.current?.attackSignals?.length > 0).map((a) => a.keyword)
-  )];
-  for (const kw of attackKeywords) {
-    recs.push(
-      `Attack language patterns detected for "${kw}" — consider GEO content hardening (publish authoritative sources)`
-    );
-  }
-
-  if (alerts.some((a) => a.type === "coordinated_attack" || a.type === "cross_engine_source")) {
-    recs.push(
-      "Coordinated negative seeding detected — consider filing a dispute or legal notice against identified domains"
-    );
-    recs.push(
-      `Publish high-authority content for ${domain} to reclaim citation rankings across affected engines`
-    );
-  }
-
-  if (recs.length === 0 && alerts.length === 0) {
-    recs.push("No negative signals detected. Continue routine monitoring.");
-  }
-
-  return recs;
-}
-
 const recommendations = generateRecommendations(alerts, uniqueSuspiciousSources, domain, keywords);
 
 // ---------------------------------------------------------------------------
@@ -633,10 +646,15 @@ if (alerts.length > 0) {
 if (uniqueSuspiciousSources.length > 0) {
   process.stderr.write(`Suspicious sources: ${uniqueSuspiciousSources.join(", ")}\n`);
 }
+const baselineSentimentTotal = baselineSentimentCount.positive + baselineSentimentCount.neutral + baselineSentimentCount.negative;
 process.stderr.write("\nSentiment trend:\n");
-process.stderr.write(
-  `  baseline  — positive: ${baselineSentimentCount.positive}, neutral: ${baselineSentimentCount.neutral}, negative: ${baselineSentimentCount.negative}\n`
-);
+if (baselineSentimentTotal === 0) {
+  process.stderr.write(`  baseline  — N/A (sentiment field not present in baseline)\n`);
+} else {
+  process.stderr.write(
+    `  baseline  — positive: ${baselineSentimentCount.positive}, neutral: ${baselineSentimentCount.neutral}, negative: ${baselineSentimentCount.negative}\n`
+  );
+}
 process.stderr.write(
   `  current   — positive: ${currentSentimentCount.positive}, neutral: ${currentSentimentCount.neutral}, negative: ${currentSentimentCount.negative}\n`
 );
@@ -651,6 +669,7 @@ process.stderr.write("\n");
 
 // ---------------------------------------------------------------------------
 // Final output
+// Fix 5: add mode: "live" for schema consistency with baseline-only path
 // ---------------------------------------------------------------------------
 
 const report = {
@@ -658,12 +677,13 @@ const report = {
   checkedAt: new Date().toISOString(),
   baselineDate,
   riskLevel,
+  mode: "live",
   alerts,
   summary: {
     totalAlerts: alerts.length,
     bySeverity,
     sentimentTrend: {
-      baseline: baselineSentimentCount,
+      baseline: baselineSentimentTotal === 0 ? null : baselineSentimentCount,
       current: currentSentimentCount,
     },
     suspiciousSources: uniqueSuspiciousSources,
@@ -671,15 +691,5 @@ const report = {
   },
   recommendations,
 };
-
-function outputResult(result) {
-  const json = JSON.stringify(result, null, 2);
-  if (args.output) {
-    writeFileSync(args.output, json, "utf8");
-    process.stderr.write(`Results written to ${args.output}\n`);
-  } else {
-    process.stdout.write(json + "\n");
-  }
-}
 
 outputResult(report);

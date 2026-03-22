@@ -313,9 +313,9 @@ async function checkStackOverflow(brand) {
   const brandLower = brand.toLowerCase();
 
   const relevant = items.filter(
-    (q) =>
-      q.title?.toLowerCase().includes(brandLower) ||
-      (q.tags ?? []).some((t) => t.toLowerCase().includes(brandLower))
+    (item) =>
+      item.title?.toLowerCase().includes(brandLower) ||
+      (item.tags ?? []).some((t) => t.toLowerCase().includes(brandLower))
   );
 
   const questionCount = relevant.length;
@@ -397,9 +397,9 @@ async function checkMedium(brand) {
   const url = `https://medium.com/search?q=${q}`;
   const res = await safeFetch(url, { "Accept": "text/html" });
 
-  if (!res.ok && res.status !== 0) {
-    // 403 is common from Medium behind Cloudflare — treat as unknown
-    return { status: "unknown", reason: `HTTP ${res.status}` };
+  if (!res.ok) {
+    // 403 is common from Medium behind Cloudflare; status 0 means timeout/network error — treat both as unknown
+    return { status: "unknown", reason: res.status === 0 ? "unknown" : `HTTP ${res.status}` };
   }
 
   const html = res.text.toLowerCase();

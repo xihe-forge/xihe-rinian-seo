@@ -130,11 +130,15 @@ const engines = [];
 const unavailable = [];
 
 for (const name of requestedEngineNames) {
-  const engine = await importEngine(name);
-  if (engine.isAvailable()) {
-    engines.push(engine);
-  } else {
-    unavailable.push({ name, envKey: engine.envKey, setupUrl: engine.setupUrl });
+  try {
+    const engine = await importEngine(name);
+    if (engine.isAvailable()) {
+      engines.push(engine);
+    } else {
+      unavailable.push({ name, envKey: engine.envKey, setupUrl: engine.setupUrl });
+    }
+  } catch (err) {
+    process.stderr.write(`Warning: failed to load engine "${name}": ${err.message}\n`);
   }
 }
 
@@ -310,8 +314,7 @@ async function main() {
       for (const engine of engines) {
         const r = kwData[engine.name][domain];
         if (r && r.cited) {
-          // Count unique URLs to avoid double-counting within one engine response
-          count += r.urls.length > 0 ? r.urls.length : 1;
+          count += 1;  // One citation event per (keyword, engine, domain) query
           citedByEngines.push(engine.name);
         }
       }

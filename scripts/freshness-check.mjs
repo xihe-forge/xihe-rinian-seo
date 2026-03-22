@@ -1,10 +1,6 @@
 #!/usr/bin/env node
 
 import { writeFileSync } from "fs";
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const TIMEOUT_MS = 10_000;
 const MAX_CONCURRENCY = 3;
