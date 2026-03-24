@@ -8,6 +8,46 @@ export function isAvailable() {
   return !!process.env.MOONSHOT_API_KEY;
 }
 
+export async function queryRaw(keyword) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const res = await fetch("https://api.moonshot.cn/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.MOONSHOT_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "kimi-latest",
+        messages: [
+          { role: "system", content: "你是一个搜索助手，请联网搜索并回答问题，在回答中引用来源URL。" },
+          { role: "user", content: keyword },
+        ],
+        use_search: true,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content ?? "";
+    const urls = extractUrls(content);
+
+    return {
+      urls,
+      snippet: content ? content.slice(0, 300).replace(/\s+/g, " ").trim() : null,
+      raw: content,
+    };
+  } catch (err) {
+    return { urls: [], snippet: null, error: err.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function query(keyword, domain) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

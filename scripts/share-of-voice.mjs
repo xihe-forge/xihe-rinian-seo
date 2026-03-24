@@ -209,20 +209,42 @@ function sleep(ms) {
 }
 
 /**
- * Query an engine for a keyword and return the URLs that match the given domain.
- * Each engine's query(keyword, domain) returns { cited, urls, snippet } where
- * `urls` contains only URLs matching `domain`. We call once per tracked domain
- * to collect citation URLs for every domain we care about.
+ * Query an engine for a keyword and return all cited URLs (unfiltered).
  *
- * Returns { urls: string[], cited: boolean, error?: string }
+ * Prefers the engine's `queryRaw(keyword)` export which returns every URL in
+ * the response so that one API call covers all tracked domains.  Falls back to
+ * calling the legacy `query(keyword, domain)` once per tracked domain when
+ * `queryRaw` is not available (backward-compat path).
+ *
+ * Returns { urls: string[], snippet: string|null, error?: string }
  */
-async function queryEngine(engine, keyword, domain) {
-  try {
-    const result = await engine.query(keyword, domain);
-    return { urls: result.urls || [], cited: result.cited === true };
-  } catch (err) {
-    return { urls: [], cited: false, error: err.message };
+async function queryEngineRaw(engine, keyword) {
+  if (typeof engine.queryRaw === "function") {
+    try {
+      const result = await engine.queryRaw(keyword);
+      if (result.error) return { urls: [], snippet: null, error: result.error };
+      return { urls: result.urls || [], snippet: result.snippet ?? null };
+    } catch (err) {
+      return { urls: [], snippet: null, error: err.message };
+    }
   }
+
+  // Fallback: call legacy query() once per domain and merge results.
+  // Note: this re-introduces multiple API calls for old adapters, by design.
+  const allUrls = [];
+  let snippet = null;
+  for (const domain of allTrackedDomains) {
+    try {
+      const result = await engine.query(keyword, domain);
+      for (const u of result.urls || []) {
+        if (!allUrls.includes(u)) allUrls.push(u);
+      }
+      if (!snippet && result.snippet) snippet = result.snippet;
+    } catch {
+      // ignore per-domain errors in fallback path
+    }
+  }
+  return { urls: allUrls, snippet };
 }
 
 // ---------------------------------------------------------------------------
@@ -232,22 +254,24 @@ async function queryEngine(engine, keyword, domain) {
 async function main() {
   const engineNames = engines.map((e) => e.name);
 
+  const totalQueries = keywords.length * engines.length;
+
   process.stderr.write(`Domain:      ${myDomain}\n`);
   process.stderr.write(`Competitors: ${competitorDomains.length > 0 ? competitorDomains.join(", ") : "(none)"}\n`);
   process.stderr.write(`Keywords:    ${keywords.length}\n`);
   process.stderr.write(`Engines:     ${engineNames.join(", ")}\n`);
   process.stderr.write(
-    `Queries:     ${keywords.length} keywords × ${engines.length} engines × ${allTrackedDomains.length} domains = ` +
-    `${keywords.length * engines.length * allTrackedDomains.length} API calls\n`
+    `Queries:     ${keywords.length} keywords × ${engines.length} engines = ` +
+    `${totalQueries} API calls (domains matched from each response, not queried separately)\n`
   );
   process.stderr.write("\n");
 
   // Results structure:
-  // rawData[kwIndex][engineName][domain] = { urls: string[], cited: boolean, error?: string }
+  // rawData[kwIndex][engineName] = { urls: string[], snippet: string|null, error?: string }
+  // Domain matching is done in the aggregation step below.
   const rawData = [];
 
   let queryCount = 0;
-  const totalQueries = keywords.length * engines.length * allTrackedDomains.length;
 
   for (let ki = 0; ki < keywords.length; ki++) {
     const kw = keywords[ki];
@@ -255,29 +279,30 @@ async function main() {
 
     for (let ei = 0; ei < engines.length; ei++) {
       const engine = engines[ei];
-      kwData[engine.name] = {};
 
-      for (let di = 0; di < allTrackedDomains.length; di++) {
-        const domain = allTrackedDomains[di];
+      // Rate-limit: 2-second sleep between API calls (skip before the very first)
+      if (queryCount > 0) await sleep(2000);
+      queryCount++;
 
-        // Rate-limit: 2-second sleep between queries (skip before very first)
-        if (queryCount > 0) await sleep(2000);
-        queryCount++;
+      process.stderr.write(
+        `[${queryCount}/${totalQueries}] ${engine.name} | "${kw}" ... `
+      );
 
-        process.stderr.write(
-          `[${queryCount}/${totalQueries}] ${engine.name} | "${kw}" | ${domain} ... `
+      const result = await queryEngineRaw(engine, kw);
+
+      if (result.error) {
+        process.stderr.write(`ERROR: ${result.error}\n`);
+      } else {
+        const matchedCount = allTrackedDomains.reduce(
+          (n, d) => n + (result.urls.some((u) => matchDomain(u, d)) ? 1 : 0),
+          0
         );
-
-        const result = await queryEngine(engine, kw, domain);
-
-        if (result.error) {
-          process.stderr.write(`ERROR: ${result.error}\n`);
-        } else {
-          process.stderr.write(result.cited ? `cited (${result.urls.length} url(s))\n` : "not cited\n");
-        }
-
-        kwData[engine.name][domain] = result;
+        process.stderr.write(
+          `${result.urls.length} url(s) total, ${matchedCount} tracked domain(s) cited\n`
+        );
       }
+
+      kwData[engine.name] = result;
     }
 
     rawData.push(kwData);
@@ -288,52 +313,63 @@ async function main() {
   // ---------------------------------------------------------------------------
 
   /**
-   * For each keyword, collapse rawData across all engines.
-   * We estimate `_other` as 0 since we can only count what we queried for.
-   * NOTE: Because each engine only returns URLs for the queried domain,
-   * we cannot reliably count citations for domains we did not query.
-   * `_other` is therefore not computed and omitted from the output,
-   * which is the honest representation of what the data supports.
+   * For each keyword, fan out the single per-(keyword, engine) raw response
+   * across all tracked domains using local URL matching.  Because all domains
+   * are evaluated against the SAME response, comparisons are consistent.
    *
    * ShareOfVoice is calculated as:
    *   domain_citations / sum(all_tracked_domain_citations)
    * This is the relative SoV among tracked brands only.
+   *
+   * _other counts URLs in the response that don't match ANY tracked domain,
+   * which is now computable because we have the full URL list.
    */
 
   const keywordResults = keywords.map((kw, ki) => {
     const kwData = rawData[ki];
 
-    // citations[domain] = { count: number, engines: string[] }
+    // citations[domain] = { count: number, engines: string[], urls: string[] }
     const citations = {};
-    let otherCount = 0; // We cannot compute this without all-citation access
+    let otherCount = 0;
 
     for (const domain of allTrackedDomains) {
       let count = 0;
       const citedByEngines = [];
+      const citedUrls = [];
 
       for (const engine of engines) {
-        const r = kwData[engine.name][domain];
-        if (r && r.error) continue;  // skip failed queries — don't count as "not cited"
-        if (r && r.cited) {
-          count += 1;  // One citation event per (keyword, engine, domain) query
+        const r = kwData[engine.name];
+        if (!r || r.error) continue;  // skip failed queries — don't count as "not cited"
+        const domainUrls = r.urls.filter((u) => matchDomain(u, domain));
+        if (domainUrls.length > 0) {
+          count += 1;  // One citation event per (keyword, engine) that mentioned this domain
           citedByEngines.push(engine.name);
+          for (const u of domainUrls) {
+            if (!citedUrls.includes(u)) citedUrls.push(u);
+          }
         }
       }
 
-      citations[domain] = { count, engines: citedByEngines };
+      citations[domain] = { count, engines: citedByEngines, urls: citedUrls };
     }
 
-    // _other is unknown; represent as null to be honest
-    citations._other = { count: null, note: "unknown — engines only return citations for queried domain" };
+    // _other: URLs from successful responses that don't match any tracked domain
+    for (const engine of engines) {
+      const r = kwData[engine.name];
+      if (!r || r.error) continue;
+      const untracked = r.urls.filter(
+        (u) => !allTrackedDomains.some((d) => matchDomain(u, d))
+      );
+      otherCount += untracked.length;
+    }
+    citations._other = { count: otherCount };
 
-    // Collect failed (engine, domain) pairs for this keyword
+    // Collect failed engines for this keyword (one entry per engine, not per domain)
     const incomplete = [];
     for (const engine of engines) {
-      for (const domain of allTrackedDomains) {
-        const r = kwData[engine.name][domain];
-        if (r && r.error) {
-          incomplete.push({ engine: engine.name, domain, error: r.error });
-        }
+      const r = kwData[engine.name];
+      if (r && r.error) {
+        incomplete.push({ engine: engine.name, error: r.error });
       }
     }
 
@@ -494,7 +530,7 @@ async function main() {
       totalTrackedCitations,
       yourCitations: yourTotalCitations,
       topCompetitor,
-      note: "shareOfVoice is relative among tracked brands only; _other citations are not measured (engines filter to queried domain)",
+      note: "shareOfVoice is relative among tracked brands only; _other counts untracked URLs from the same responses",
     },
     topActions,
     ...(allIncomplete.length > 0 && { warnings: allIncomplete }),

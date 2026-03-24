@@ -8,6 +8,42 @@ export function isAvailable() {
   return !!process.env.PERPLEXITY_API_KEY;
 }
 
+export async function queryRaw(keyword) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const res = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [{ role: "user", content: keyword }],
+      }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content ?? "";
+    const urls = [...new Set(data.citations ?? [])];
+
+    return {
+      urls,
+      snippet: content ? content.slice(0, 300).replace(/\s+/g, " ").trim() : null,
+      raw: content,
+    };
+  } catch (err) {
+    return { urls: [], snippet: null, error: err.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function query(keyword, domain) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

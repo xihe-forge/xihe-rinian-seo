@@ -8,6 +8,40 @@ export function isAvailable() {
   return !!process.env.YOU_API_KEY;
 }
 
+export async function queryRaw(keyword) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const apiKey = process.env.YOU_API_KEY;
+
+  try {
+    const params = new URLSearchParams({ query: keyword });
+    const res = await fetch(`https://chat-api.you.com/smart?${params}`, {
+      method: "GET",
+      headers: {
+        "X-API-Key": apiKey,
+      },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+
+    const data = await res.json();
+    const content = data.answer || "";
+    const citations = data.citations || data.hits || [];
+    const urls = [...new Set(citations.map((c) => c.url || c).filter(Boolean))];
+
+    return {
+      urls,
+      snippet: content ? content.slice(0, 300).replace(/\s+/g, " ").trim() : null,
+      raw: content,
+    };
+  } catch (err) {
+    return { urls: [], snippet: null, error: err.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function query(keyword, domain) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

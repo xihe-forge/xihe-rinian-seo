@@ -8,6 +8,42 @@ export function isAvailable() {
   return !!process.env.GEMINI_API_KEY;
 }
 
+export async function queryRaw(keyword) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: keyword }] }],
+          tools: [{ google_search: {} }],
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+
+    const data = await res.json();
+    const { urls, content } = extractGroundingData(data);
+
+    return {
+      urls,
+      snippet: content ? content.slice(0, 300).replace(/\s+/g, " ").trim() : null,
+      raw: content,
+    };
+  } catch (err) {
+    return { urls: [], snippet: null, error: err.message };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function query(keyword, domain) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
