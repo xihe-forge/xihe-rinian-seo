@@ -160,7 +160,7 @@ async function checkYouTube(brand) {
 
   // Rough video count from title occurrences
   const videoCount = titleMatches.length;
-  const found = videoCount > 0 || html.includes(brandLower);
+  const found = videoCount > 0;
 
   if (!found) {
     return {
@@ -534,6 +534,7 @@ function computeOverallScore(platforms) {
   let totalWeight = 0;
 
   for (const p of platforms) {
+    if (p.status === "unknown") continue; // indeterminate — exclude from both numerator and denominator
     totalWeight += p.citationWeight;
     if (p.found && typeof p.score === "number") {
       // Normalise per-platform score (0–10) to 0–1, weight by citation share
@@ -541,7 +542,7 @@ function computeOverallScore(platforms) {
     }
   }
 
-  if (totalWeight === 0) return 0;
+  if (totalWeight === 0) return null; // indeterminate — all platforms returned unknown
   return Math.round((weightedSum / totalWeight) * 100);
 }
 
@@ -624,7 +625,7 @@ async function main() {
   const overallScore = computeOverallScore(results);
   const topActions   = buildTopActions(results);
 
-  process.stderr.write(`\nOverall presence score: ${overallScore}/100\n`);
+  process.stderr.write(`\nOverall presence score: ${overallScore !== null ? `${overallScore}/100` : "n/a (all platforms unknown)"}\n`);
   if (topActions.length > 0) {
     process.stderr.write(`\nTop actions:\n`);
     for (const action of topActions.slice(0, 5)) {

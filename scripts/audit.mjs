@@ -31,13 +31,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const activeChildren = new Set();
 
-function runToolWithHandle(scriptName, args, opts = {}) {
+function runToolWithHandle(scriptName, args, timeout = 120_000, opts = {}) {
   return new Promise((resolve, reject) => {
     const child = execFile(
       "node",
       [join(__dirname, scriptName), ...args],
       {
-        timeout: 120_000,
+        timeout,
         env: { ...process.env },
         maxBuffer: 10 * 1024 * 1024,
         ...opts,
@@ -107,7 +107,35 @@ function extractDomain(url) {
  * "getsubtextai.com" -> "getsubtextai"
  */
 function brandFromDomain(domain) {
-  return domain.split(".")[0];
+  // Second-level TLDs that should be stripped as a two-part suffix (e.g. "example.co.jp" -> "example")
+  const secondLevelTlds = new Set([
+    "com.cn", "co.jp", "co.kr", "com.au", "co.nz", "com.br", "co.in",
+    "com.sg", "com.hk", "com.tw", "co.uk", "org.uk",
+  ]);
+  // Single-part TLDs to strip
+  const tlds = new Set([
+    "com", "org", "net", "io", "co", "uk", "us", "ai", "app", "dev",
+    // Country-code TLDs
+    "cn", "de", "fr", "jp", "kr", "in", "ru", "br", "au", "ca", "it",
+    "es", "nl", "se", "no", "fi", "dk", "pl", "cz", "ch", "at", "be",
+    "pt", "ie", "nz", "sg", "hk", "tw", "mx", "ar", "za", "th", "vn",
+    "id", "my", "ph",
+  ]);
+  const parts = domain.split(".");
+  // Check for a matching second-level TLD suffix (last two parts joined)
+  if (parts.length > 2) {
+    const twoPartSuffix = parts.slice(-2).join(".");
+    if (secondLevelTlds.has(twoPartSuffix)) {
+      // Strip both suffix parts and return the preceding label
+      return parts[parts.length - 3];
+    }
+  }
+  // Remove trailing single-part TLD parts (e.g. "com", "de", "co")
+  while (parts.length > 1 && tlds.has(parts[parts.length - 1])) {
+    parts.pop();
+  }
+  // The registrable domain is now the last remaining part
+  return parts[parts.length - 1];
 }
 
 /**
@@ -121,10 +149,10 @@ function progressBar(value, max = 100, width = 10) {
 /**
  * Run a script as a subprocess, capturing stdout JSON output.
  */
-async function runTool(scriptName, args, label, stepNum, totalSteps) {
+async function runTool(scriptName, args, label, stepNum, totalSteps, timeout = 120_000) {
   process.stderr.write(`[${stepNum}/${totalSteps}] ${label}...\n`);
   try {
-    const { stdout } = await runToolWithHandle(scriptName, args);
+    const { stdout } = await runToolWithHandle(scriptName, args, timeout);
     let result;
     try {
       result = JSON.parse(stdout);
@@ -145,9 +173,9 @@ async function runTool(scriptName, args, label, stepNum, totalSteps) {
 // "Silent start" variant: does NOT print [N/M] prefix (used for parallel steps
 // that we announce manually before awaiting).
 // ---------------------------------------------------------------------------
-async function runToolSilent(scriptName, args) {
+async function runToolSilent(scriptName, args, timeout = 120_000) {
   try {
-    const { stdout } = await runToolWithHandle(scriptName, args);
+    const { stdout } = await runToolWithHandle(scriptName, args, timeout);
     try {
       return JSON.parse(stdout);
     } catch {
@@ -595,7 +623,8 @@ async function main() {
         ["--domain", domain, "--keywords", resolvedKeywords],
         "🤖 检查 AI 引擎引用情况",
         6,
-        TOTAL_STEPS
+        TOTAL_STEPS,
+        600_000
       );
     } else {
       process.stderr.write(
@@ -617,7 +646,8 @@ async function main() {
         ],
         "📈 计算声量份额",
         7,
-        TOTAL_STEPS
+        TOTAL_STEPS,
+        600_000
       );
     } else if (!args.competitors) {
       process.stderr.write(

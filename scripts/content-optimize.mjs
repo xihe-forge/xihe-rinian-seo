@@ -123,7 +123,10 @@ function analyzeQuotations(allText, crawlData) {
   let score;
   const suggestions = [];
 
-  if (quotationCount + blockquoteCount >= 3) {
+  if (quotationCount + blockquoteCount >= 5) {
+    score = 10;
+    findings.push("Excellent quote density — AI systems can extract multiple authoritative statements");
+  } else if (quotationCount + blockquoteCount >= 3) {
     score = 9;
     findings.push("Good quote density — AI systems can extract authoritative statements");
   } else if (quotationCount + blockquoteCount >= 1) {
@@ -189,7 +192,10 @@ function analyzeStatistics(allText) {
   let score;
   const suggestions = [];
 
-  if (statisticCount >= 8) {
+  if (statisticCount >= 12) {
+    score = 10;
+    findings.push(`Found ${statisticCount} statistical data points — exceptional evidence density`);
+  } else if (statisticCount >= 8) {
     score = 9;
     findings.push(`Found ${statisticCount} statistical data points — strong evidence density`);
   } else if (statisticCount >= 4) {
@@ -276,7 +282,11 @@ function analyzeSourceCitations(allText, links) {
 
   const totalSignals = citationCount + authoritativeLinks;
 
-  if (totalSignals >= 5) {
+  if (totalSignals >= 7) {
+    score = 10;
+    findings.push(`${citationCount} citation phrase(s) detected in text`);
+    findings.push("Excellent sourcing signals — content is comprehensively cited");
+  } else if (totalSignals >= 5) {
     score = 9;
     findings.push(`${citationCount} citation phrase(s) detected in text`);
     findings.push("Strong sourcing signals — content appears well-cited");
@@ -357,7 +367,10 @@ function analyzeTechnicalTerms(allText) {
 
   let score;
 
-  if (technicalDensity > 0.05 && vagueCount < 10) {
+  if (technicalDensity > 0.07 && vagueCount < 5) {
+    score = 10;
+    findings.push(`Technical term density: ${(technicalDensity * 100).toFixed(1)}% — excellent domain-specific language density`);
+  } else if (technicalDensity > 0.05 && vagueCount < 10) {
     score = 8;
     findings.push(`Technical term density: ${(technicalDensity * 100).toFixed(1)}% — domain-specific language present`);
   } else if (technicalDensity > 0.02) {
@@ -396,7 +409,7 @@ function analyzeTechnicalTerms(allText) {
 // Analysis: Content Structure
 // ---------------------------------------------------------------------------
 
-function analyzeContentStructure(headings, faq, allText) {
+function analyzeContentStructure(headings, faq, allText, rawText) {
   const findings = [];
   const suggestions = [];
 
@@ -437,13 +450,15 @@ function analyzeContentStructure(headings, faq, allText) {
 
   findings.push(`${headingCount} total headings (H1: ${h1Count}, H2: ${h2Count}, H3: ${h3Count})`);
 
-  // Paragraph length check
-  const paragraphs = allText.split(/\n\n+/).filter((p) => p.trim().length > 30);
+  // Paragraph length check — use rawText (paragraph boundaries preserved) so
+  // the split produces real paragraphs instead of one giant flattened string.
+  const paragraphSource = rawText || allText;
+  const paragraphs = paragraphSource.split(/\n\n+/).filter((p) => p.trim().length > 30);
   let longParagraphs = 0;
   let totalSentences = 0;
 
   for (const p of paragraphs) {
-    const sentences = splitSentences(p);
+    const sentences = splitSentences(normalizeText(p));
     totalSentences += sentences.length;
     if (sentences.length > 5) longParagraphs++;
   }
@@ -465,8 +480,13 @@ function analyzeContentStructure(headings, faq, allText) {
     findings.push(`${faqCount} FAQ item(s) found`);
   }
 
-  // Lists/tables signal (heuristic: look for list-like patterns in text)
-  const hasBulletContent = /^\s*[-•*]\s+.{10,}/m.test(allText) || /^\s*\d+\.\s+.{10,}/m.test(allText);
+  // Lists/tables signal — use rawText with multiline anchors, and also check
+  // for inline list markers in the normalised flat text as a fallback.
+  const hasBulletContent =
+    /^\s*[-•*]\s+.{10,}/m.test(paragraphSource) ||
+    /^\s*\d+\.\s+.{10,}/m.test(paragraphSource) ||
+    /(?:^|\n)\s*[-•*]\s+.{10,}/.test(paragraphSource) ||
+    /(?:^|\n)\s*\d+\.\s+.{10,}/.test(paragraphSource);
   if (!hasBulletContent) {
     suggestions.push("Add bulleted or numbered lists — AI systems frequently extract list content for featured snippets");
   }
@@ -475,7 +495,7 @@ function analyzeContentStructure(headings, faq, allText) {
   const issueCount = suggestions.length;
 
   if (issueCount === 0) {
-    score = 9;
+    score = 10;
   } else if (issueCount <= 2) {
     score = 6;
   } else if (issueCount <= 4) {
@@ -572,7 +592,10 @@ function analyzeAnswerDensity(allText) {
 
   let score;
 
-  if (directRatio >= 0.3 && fillerCount <= 2) {
+  if (directRatio >= 0.5 && fillerCount === 0) {
+    score = 10;
+    findings.push("Excellent answer density — content is highly direct with no filler");
+  } else if (directRatio >= 0.3 && fillerCount <= 2) {
     score = 8;
     findings.push("Good answer density — content is direct and informative");
   } else if (directRatio >= 0.15) {
@@ -637,10 +660,16 @@ function buildTextFromCrawlData(crawlData) {
     parts.push(crawlData.links.anchors.join(" "));
   }
 
-  // Raw body text if present (from direct --url fetch path)
-  if (crawlData._bodyText) parts.push(crawlData._bodyText);
+  // Raw body text — present when piped from crawl-page.mjs (bodyText field)
+  // or from the internal --url fetch path (_bodyText field)
+  if (crawlData.bodyText) parts.push(crawlData.bodyText);
+  else if (crawlData._bodyText) parts.push(crawlData._bodyText);
 
-  return normalizeText(parts.join(" "));
+  // Join with double-newline so paragraph boundaries survive into analyzeContentStructure.
+  // Return both the raw (paragraph-preserving) text and the normalized flat text.
+  const rawText = parts.join("\n\n");
+  const allText = normalizeText(rawText);
+  return { rawText, allText };
 }
 
 // ---------------------------------------------------------------------------
@@ -654,6 +683,10 @@ async function crawlAndEnrich(url) {
   let pageRes;
   try {
     pageRes = await fetchWithTimeout(url);
+    if (!pageRes.ok) {
+      process.stderr.write(`HTTP ${pageRes.status} for ${url} — cannot analyze error pages\n`);
+      process.exit(1);
+    }
     pageText = await pageRes.text();
   } catch (err) {
     process.stderr.write(`Failed to fetch URL: ${err.message}\n`);
@@ -673,7 +706,9 @@ async function crawlAndEnrich(url) {
   // Remove non-content elements
   $("script, style, nav, footer, header, aside, [role=navigation]").remove();
 
-  const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+  // Preserve paragraph breaks (\n\n) so analyzeContentStructure can split on them.
+  // Collapse only intra-line whitespace runs, not newlines.
+  const bodyText = $("body").text().replace(/[^\S\n]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   const blockquoteCount = $("blockquote").length;
 
   const headings = [];
@@ -736,7 +771,7 @@ async function crawlAndEnrich(url) {
 // ---------------------------------------------------------------------------
 
 function analyze(crawlData) {
-  const allText = buildTextFromCrawlData(crawlData);
+  const { rawText, allText } = buildTextFromCrawlData(crawlData);
 
   const dimQuotations = analyzeQuotations(allText, crawlData);
   const dimStatistics = analyzeStatistics(allText);
@@ -745,7 +780,8 @@ function analyze(crawlData) {
   const dimStructure = analyzeContentStructure(
     crawlData.headings || [],
     crawlData.faq || [],
-    allText
+    allText,
+    rawText
   );
   const dimAnswerDensity = analyzeAnswerDensity(allText);
 

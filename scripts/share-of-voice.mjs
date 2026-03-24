@@ -313,6 +313,7 @@ async function main() {
 
       for (const engine of engines) {
         const r = kwData[engine.name][domain];
+        if (r && r.error) continue;  // skip failed queries — don't count as "not cited"
         if (r && r.cited) {
           count += 1;  // One citation event per (keyword, engine, domain) query
           citedByEngines.push(engine.name);
@@ -325,7 +326,19 @@ async function main() {
     // _other is unknown; represent as null to be honest
     citations._other = { count: null, note: "unknown — engines only return citations for queried domain" };
 
-    // SoV among tracked domains only
+    // Collect failed (engine, domain) pairs for this keyword
+    const incomplete = [];
+    for (const engine of engines) {
+      for (const domain of allTrackedDomains) {
+        const r = kwData[engine.name][domain];
+        if (r && r.error) {
+          incomplete.push({ engine: engine.name, domain, error: r.error });
+        }
+      }
+    }
+
+    // SoV among tracked domains only, counting only queries that succeeded
+    // For each domain, the denominator is the number of engines that did NOT error for that domain
     const trackedTotal = allTrackedDomains.reduce((s, d) => s + (citations[d]?.count || 0), 0);
 
     let shareOfVoice = null;
@@ -337,7 +350,9 @@ async function main() {
       }
     }
 
-    return { keyword: kw, citations, shareOfVoice };
+    const result = { keyword: kw, citations, shareOfVoice };
+    if (incomplete.length > 0) result.incomplete = incomplete;
+    return result;
   });
 
   // ---------------------------------------------------------------------------
@@ -349,6 +364,9 @@ async function main() {
   const domainTotals = Object.fromEntries(allTrackedDomains.map((d) => [d, 0]));
 
   for (const kwResult of keywordResults) {
+    // Skip keywords with incomplete data so that engine failures for one domain
+    // don't silently deflate its overall SoV relative to competitors.
+    if (kwResult.incomplete) continue;
     for (const domain of allTrackedDomains) {
       const c = kwResult.citations[domain]?.count || 0;
       domainTotals[domain] += c;
@@ -380,9 +398,9 @@ async function main() {
 
   const topActions = [];
 
-  // Keywords where user has zero citations
+  // Keywords where user has zero citations (skip keywords with incomplete data to avoid false gaps)
   const zeroCitationKws = keywordResults.filter(
-    (kr) => (kr.citations[myDomain]?.count || 0) === 0
+    (kr) => (kr.citations[myDomain]?.count || 0) === 0 && !kr.incomplete
   );
   if (zeroCitationKws.length > 0) {
     for (const kr of zeroCitationKws) {
@@ -392,9 +410,9 @@ async function main() {
     }
   }
 
-  // Keywords dominated by a competitor (competitor SoV > 2× yours)
+  // Keywords dominated by a competitor (competitor SoV > 2× yours; skip incomplete keywords)
   for (const kr of keywordResults) {
-    if (!kr.shareOfVoice) continue;
+    if (!kr.shareOfVoice || kr.incomplete) continue;
     const yourSov = kr.shareOfVoice[myDomain] || 0;
     for (const comp of competitorDomains) {
       const compSov = kr.shareOfVoice[comp] || 0;
@@ -404,6 +422,14 @@ async function main() {
         );
       }
     }
+  }
+
+  // Note any keywords with incomplete data
+  const incompleteKws = keywordResults.filter((kr) => kr.incomplete);
+  if (incompleteKws.length > 0) {
+    topActions.push(
+      `${incompleteKws.length} keyword(s) have incomplete data due to engine errors — results may undercount citations`
+    );
   }
 
   // Generic encouragement if nothing flagged
@@ -447,6 +473,16 @@ async function main() {
   // Final result
   // ---------------------------------------------------------------------------
 
+  // Collect all unique failed queries across all keywords for the top-level warnings field
+  const allIncomplete = [];
+  for (const kr of keywordResults) {
+    if (kr.incomplete) {
+      for (const entry of kr.incomplete) {
+        allIncomplete.push({ keyword: kr.keyword, ...entry });
+      }
+    }
+  }
+
   const output = {
     domain: myDomain,
     competitors: competitorDomains,
@@ -461,6 +497,7 @@ async function main() {
       note: "shareOfVoice is relative among tracked brands only; _other citations are not measured (engines filter to queried domain)",
     },
     topActions,
+    ...(allIncomplete.length > 0 && { warnings: allIncomplete }),
   };
 
   outputResult(output);

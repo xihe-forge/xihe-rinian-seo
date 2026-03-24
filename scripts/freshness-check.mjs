@@ -48,6 +48,7 @@ async function fetchWithTimeout(url, options = {}) {
 // ---------------------------------------------------------------------------
 
 function parseSitemap(xml) {
+  // Try <url> entries first (standard urlset)
   const urls = [];
   const urlPattern = /<url>([\s\S]*?)<\/url>/g;
   let match;
@@ -57,7 +58,18 @@ function parseSitemap(xml) {
     const lastmod = block.match(/<lastmod>(.*?)<\/lastmod>/)?.[1]?.trim();
     if (loc) urls.push({ url: loc, lastmod: lastmod || null });
   }
-  return urls;
+
+  if (urls.length > 0) return { urls, isIndex: false };
+
+  // Try sitemap index
+  const sitemapPattern = /<sitemap>([\s\S]*?)<\/sitemap>/g;
+  const childSitemaps = [];
+  while ((match = sitemapPattern.exec(xml)) !== null) {
+    const loc = match[1].match(/<loc>(.*?)<\/loc>/)?.[1]?.trim();
+    if (loc) childSitemaps.push(loc);
+  }
+
+  return { urls: [], isIndex: true, childSitemaps };
 }
 
 // ---------------------------------------------------------------------------
@@ -74,13 +86,15 @@ function extractNavLinks(html, baseUrl) {
     const href = m[1];
     try {
       const resolved = new URL(href, baseUrl);
+      resolved.hash = "";
+      const cleanHref = resolved.href;
       if (
         resolved.hostname === parsedBase.hostname &&
         resolved.protocol.startsWith("http") &&
-        !seen.has(resolved.href)
+        !seen.has(cleanHref)
       ) {
-        seen.add(resolved.href);
-        links.push({ url: resolved.href, lastmod: null });
+        seen.add(cleanHref);
+        links.push({ url: cleanHref, lastmod: null });
       }
     } catch {
       // skip malformed
@@ -205,13 +219,15 @@ async function checkPage(entry, semaphore) {
       } catch {
         // GET failed — we still have HEAD info
       }
-    } else if (!httpStatus) {
-      // HEAD failed entirely — try GET
+    } else if (!httpStatus || httpStatus < 200 || httpStatus >= 300) {
+      // HEAD failed entirely OR returned any non-2xx — try GET
       try {
         const getRes = await fetchWithTimeout(url);
         httpStatus = getRes.status;
-        lastModifiedHeader = getRes.headers.get("last-modified") || null;
-        if (getRes.ok) html = await getRes.text();
+        if (getRes.ok) {
+          html = await getRes.text();
+          lastModifiedHeader = getRes.headers.get("last-modified") || null;
+        }
       } catch (err) {
         fetchError = err.name === "AbortError" ? "timeout" : err.message;
       }
@@ -375,8 +391,40 @@ async function main() {
     const sitemapRes = await fetchWithTimeout(sitemapUrl);
     if (sitemapRes.ok) {
       const xml = await sitemapRes.text();
-      urlEntries = parseSitemap(xml);
-      process.stderr.write(`${urlEntries.length} URLs found\n`);
+      const parsed = parseSitemap(xml);
+      if (parsed.isIndex && parsed.childSitemaps.length > 0) {
+        process.stderr.write(`sitemap index with ${parsed.childSitemaps.length} child sitemaps — fetching...\n`);
+        const childSem = createSemaphore(MAX_CONCURRENCY);
+        const childResults = await Promise.all(
+          parsed.childSitemaps.map((childUrl) =>
+            childSem.acquire().then(async () => {
+              try {
+                process.stderr.write(`  Fetching child sitemap: ${childUrl} ... `);
+                const childRes = await fetchWithTimeout(childUrl);
+                if (childRes.ok) {
+                  const childXml = await childRes.text();
+                  const childParsed = parseSitemap(childXml);
+                  process.stderr.write(`${childParsed.urls.length} URLs\n`);
+                  return childParsed.urls;
+                } else {
+                  process.stderr.write(`${childRes.status} — skipped\n`);
+                  return [];
+                }
+              } catch (err) {
+                process.stderr.write(`failed (${err.message}) — skipped\n`);
+                return [];
+              } finally {
+                childSem.release();
+              }
+            })
+          )
+        );
+        urlEntries = childResults.flat();
+        process.stderr.write(`Total URLs from sitemap index: ${urlEntries.length}\n`);
+      } else {
+        urlEntries = parsed.urls;
+        process.stderr.write(`${urlEntries.length} URLs found\n`);
+      }
     } else {
       process.stderr.write(`${sitemapRes.status} — falling back to nav link crawl\n`);
     }

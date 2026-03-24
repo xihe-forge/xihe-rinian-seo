@@ -312,7 +312,7 @@ if (engines.length === 0) {
 
   const alerts = [];
 
-  for (const kwEntry of baseline.keywords ?? []) {
+  for (const kwEntry of (baseline.keywords ?? []).filter(e => keywords.includes(e.keyword))) {
     const kw = kwEntry.keyword;
     for (const [engineName, result] of Object.entries(kwEntry.results ?? {})) {
       const snippet = result.snippet ?? null;
@@ -399,7 +399,7 @@ for (let i = 0; i < keywords.length; i++) {
       results[engine.name] = engineResult;
       process.stderr.write(engineResult.cited ? "CITED\n" : "not cited\n");
     } catch (err) {
-      results[engine.name] = { cited: false, urls: [], snippet: null, error: err.message };
+      results[engine.name] = { cited: false, urls: [], snippet: null, error: err.message, failed: true };
       process.stderr.write(`ERROR: ${err.message}\n`);
     }
   }
@@ -435,9 +435,13 @@ for (const currEntry of currentResults) {
 
     if (!curr) continue;
 
-    // Record source domains for all current cited URLs
-    for (const url of curr.urls ?? []) {
-      recordSourceDomain(url, kw, eName);
+    // Record source domains only for negative/attack citations
+    const isNegative = curr.sentiment?.label === "negative";
+    const hasAttackSignals = curr.sentiment?.attackSignals?.length > 0;
+    if (isNegative || hasAttackSignals) {
+      for (const url of curr.urls ?? []) {
+        recordSourceDomain(url, kw, eName);
+      }
     }
 
     // ---- Alert: sentiment shift (positive/neutral → negative) ----
@@ -508,7 +512,7 @@ for (const currEntry of currentResults) {
     }
 
     // ---- Alert: citation lost ----
-    if (prev?.cited === true && curr.cited === false) {
+    if (prev?.cited === true && curr.cited === false && !curr.failed) {
       alerts.push({
         type: "citation_lost",
         severity: "low",
@@ -572,12 +576,22 @@ for (const currEntry of currentResults) {
   }
   for (const [srcDomain, enginesSet] of Object.entries(enginesBySourceDomain)) {
     if (enginesSet.size >= 2 && !suspiciousSources.includes(srcDomain)) {
+      // Only flag if there is negative sentiment in at least one engine for this keyword.
+      // A brand-new domain with no negative evidence is not sufficient to trigger the alert.
+      const baselineKwEngines = baselineLookup[kw] ?? {};
+      const baselineUrlsForKw = Object.values(baselineKwEngines).flatMap((r) => r.urls ?? []);
+      const isNewDomain = !baselineUrlsForKw.some((u) => extractDomain(u) === srcDomain);
+      const hasNegativeEngine = [...enginesSet].some(
+        (eName) => currEntry.results[eName]?.sentiment?.label === "negative"
+      );
+      if (!hasNegativeEngine) continue;
+
       suspiciousSources.push(srcDomain);
       alerts.push({
         type: "cross_engine_source",
         severity: "high",
         keyword: kw,
-        description: `Source domain "${srcDomain}" cited across ${enginesSet.size} engines for keyword "${kw}" — possible coordinated seeding`,
+        description: `Source domain "${srcDomain}" cited across ${enginesSet.size} engines for keyword "${kw}" — possible coordinated seeding${isNewDomain ? " (domain not present in baseline)" : ""}`,
         engines: [...enginesSet],
         sourceUrl: `https://${srcDomain}`,
       });
@@ -606,7 +620,7 @@ function buildSentimentCount(kwEntries, engineNames) {
 
 const engineNames = engines.map((e) => e.name);
 
-const baselineSentimentCount = buildSentimentCount(baseline.keywords ?? [], engineNames);
+const baselineSentimentCount = buildSentimentCount((baseline.keywords ?? []).filter(e => keywords.includes(e.keyword)), engineNames);
 const currentSentimentCount = buildSentimentCount(currentResults, engineNames);
 
 // Citation changes
@@ -618,7 +632,7 @@ for (const currEntry of currentResults) {
     const prevCited = baselineKw[eName]?.cited ?? false;
     const currCited = currEntry.results[eName]?.cited ?? false;
     if (!prevCited && currCited) gained++;
-    else if (prevCited && !currCited) lost++;
+    else if (prevCited && !currCited && !currEntry.results[eName]?.failed) lost++;
     else unchanged++;
   }
 }

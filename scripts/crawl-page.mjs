@@ -312,7 +312,9 @@ async function crawl(rawUrl) {
     fetchText(`${origin}/sitemap.xml`),
   ]);
 
-  const bodyText = $("body").text().replace(/\s+/g, " ").trim();
+  const $cleanBody = $("body").clone();
+  $cleanBody.find("script, style, nav, footer, header, aside, [role=navigation]").remove();
+  const bodyText = $cleanBody.text().replace(/[^\S\n]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   const wordCount = countWords(bodyText);
   const pageSizeBytes = Buffer.byteLength(pageText, "utf8");
 
@@ -343,6 +345,7 @@ async function crawl(rawUrl) {
       readingTimeMin: Math.ceil(wordCount / WORDS_PER_MIN),
       pageSizeBytes,
     },
+    bodyText,
     faq: extractFaq($, schemas),
   };
 }
