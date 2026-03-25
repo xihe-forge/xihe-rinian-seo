@@ -1,9 +1,9 @@
 ---
-name: rinian-seo
+name: xihe-rinian-seo
 description: 一键全套 SEO + AEO + GEO 审计 — 输入 URL，输出综合报告
 ---
 
-# /rinian-seo — 综合搜索优化审计
+# /xihe-rinian-seo — 综合搜索优化审计
 
 对目标网站执行全套审计：Lighthouse SEO 基线、页面信号爬取、GEO 内容优化分析、平台存在度检测、内容新鲜度监控，以及 AI 搜索引用检测（需 API Key）。
 

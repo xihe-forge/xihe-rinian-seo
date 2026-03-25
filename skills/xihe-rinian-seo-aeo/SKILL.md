@@ -1,9 +1,9 @@
 ---
-name: rinian-seo:aeo
+name: xihe-rinian-seo:aeo
 description: AI 可引用性审计 — Schema、llms.txt、FAQ、答案密度等 8 维度评分
 ---
 
-# /rinian-seo:aeo — AEO 审计
+# /xihe-rinian-seo:aeo — AEO 审计
 
 评估页面对 AI 搜索引擎的可引用性，8 个维度满分 80 分。
 

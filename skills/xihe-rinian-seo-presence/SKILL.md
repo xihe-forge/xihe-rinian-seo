@@ -1,9 +1,9 @@
 ---
-name: rinian-seo:presence
+name: xihe-rinian-seo:presence
 description: 检查品牌在 Reddit/YouTube/Wikipedia 等 8 大高引用平台的存在状况
 ---
 
-# /rinian-seo:presence — 平台存在度检测
+# /xihe-rinian-seo:presence — 平台存在度检测
 
 检查品牌在 AI 搜索引擎高频引用的 8 个平台上的存在度。
 

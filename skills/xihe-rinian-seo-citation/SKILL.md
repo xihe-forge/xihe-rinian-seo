@@ -1,9 +1,9 @@
 ---
-name: rinian-seo:citation
+name: xihe-rinian-seo:citation
 description: 监测域名在 5 个 AI 搜索引擎中的引用状态和品牌情感
 ---
 
-# /rinian-seo:citation — AI 引用监测
+# /xihe-rinian-seo:citation — AI 引用监测
 
 检测目标域名是否被 Perplexity、ChatGPT、Gemini、Kimi、You.com 引用。
 

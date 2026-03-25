@@ -1,9 +1,9 @@
 ---
-name: rinian-seo:voice
+name: xihe-rinian-seo:voice
 description: 计算品牌在 AI 搜索中的引用占比 vs 竞品
 ---
 
-# /rinian-seo:voice — AI 声量占比
+# /xihe-rinian-seo:voice — AI 声量占比
 
 对比你的品牌和竞品在 AI 搜索引擎中的引用频率。
 

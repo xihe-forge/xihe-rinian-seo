@@ -71,23 +71,23 @@ cp -r skills/*/ ~/.claude/skills/
 
 | 命令 | 功能 |
 |------|------|
-| `/rinian-seo` | **一键全套审计** |
-| `/rinian-seo:seo` | SEO 审计 |
-| `/rinian-seo:aeo` | AEO 审计（8 维度） |
-| `/rinian-seo:citation` | AI 引用监测 |
-| `/rinian-seo:content` | GEO 内容优化 |
-| `/rinian-seo:presence` | 平台存在度 |
-| `/rinian-seo:freshness` | 内容新鲜度 |
-| `/rinian-seo:voice` | 声量占比 |
-| `/rinian-seo:defense` | 负面 GEO 防御 |
-| `/rinian-seo:report` | 前后对比报告 |
+| `/xihe-rinian-seo` | **一键全套审计** |
+| `/xihe-rinian-seo:seo` | SEO 审计 |
+| `/xihe-rinian-seo:aeo` | AEO 审计（8 维度） |
+| `/xihe-rinian-seo:citation` | AI 引用监测 |
+| `/xihe-rinian-seo:content` | GEO 内容优化 |
+| `/xihe-rinian-seo:presence` | 平台存在度 |
+| `/xihe-rinian-seo:freshness` | 内容新鲜度 |
+| `/xihe-rinian-seo:voice` | 声量占比 |
+| `/xihe-rinian-seo:defense` | 负面 GEO 防御 |
+| `/xihe-rinian-seo:report` | 前后对比报告 |
 
 ---
 
 ## 反馈闭环
 
 ```
-/rinian-seo（基线） → 优化 → /rinian-seo（复查） → /rinian-seo:report（对比） → ...
+/xihe-rinian-seo（基线） → 优化 → /xihe-rinian-seo（复查） → /xihe-rinian-seo:report（对比） → ...
 ```
 
 ---
