@@ -1,4 +1,4 @@
-# xihe-search-forge
+# xihe-rinian-seo
 
 SEO + AEO + GEO 一站式搜索优化锻造炉。
 
@@ -14,11 +14,11 @@ SEO + AEO + GEO 一站式搜索优化锻造炉。
 
 ```bash
 # npx（无需安装）
-npx xihe-search-forge --url https://yoursite.com
+npx xihe-rinian-seo --url https://yoursite.com
 
 # 或 clone 后使用
-git clone https://github.com/xihe-forge/xihe-search-forge.git
-cd xihe-search-forge && pnpm install
+git clone https://github.com/xihe-forge/xihe-rinian-seo.git
+cd xihe-rinian-seo && pnpm install
 npm run audit -- --url https://yoursite.com --brand "YourBrand"
 ```
 
@@ -69,23 +69,23 @@ cp -r skills/*/ ~/.claude/skills/
 
 | 命令 | 功能 |
 |------|------|
-| `/search-forge` | **一键全套审计** |
-| `/search-forge:seo` | SEO 审计 |
-| `/search-forge:aeo` | AEO 审计（8 维度） |
-| `/search-forge:citation` | AI 引用监测 |
-| `/search-forge:content` | GEO 内容优化 |
-| `/search-forge:presence` | 平台存在度 |
-| `/search-forge:freshness` | 内容新鲜度 |
-| `/search-forge:voice` | 声量占比 |
-| `/search-forge:defense` | 负面 GEO 防御 |
-| `/search-forge:report` | 前后对比报告 |
+| `/rinian-seo` | **一键全套审计** |
+| `/rinian-seo:seo` | SEO 审计 |
+| `/rinian-seo:aeo` | AEO 审计（8 维度） |
+| `/rinian-seo:citation` | AI 引用监测 |
+| `/rinian-seo:content` | GEO 内容优化 |
+| `/rinian-seo:presence` | 平台存在度 |
+| `/rinian-seo:freshness` | 内容新鲜度 |
+| `/rinian-seo:voice` | 声量占比 |
+| `/rinian-seo:defense` | 负面 GEO 防御 |
+| `/rinian-seo:report` | 前后对比报告 |
 
 ---
 
 ## 反馈闭环
 
 ```
-/search-forge（基线） → 优化 → /search-forge（复查） → /search-forge:report（对比） → ...
+/rinian-seo（基线） → 优化 → /rinian-seo（复查） → /rinian-seo:report（对比） → ...
 ```
 
 ---
@@ -110,7 +110,7 @@ export YOU_API_KEY=xxxx                # you.com/api
 
 曦和（Xihe）得名于中国神话中驾驭太阳的女神。[xihe-forge](https://github.com/xihe-forge) 是曦和 AI 的开源锻造炉——我们在这里把实用的 AI 工具从想法锤炼成可以直接上手的开源项目。
 
-xihe-search-forge 是第一件出炉的作品。更多面向搜索、内容和增长的 AI 工具正在锻造中，欢迎 Watch 组织动态或参与贡献。
+xihe-rinian-seo 是第一件出炉的作品。更多面向搜索、内容和增长的 AI 工具正在锻造中，欢迎 Watch 组织动态或参与贡献。
 
 ---
 

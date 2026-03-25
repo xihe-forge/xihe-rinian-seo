@@ -1,9 +1,9 @@
 ---
-name: search-forge:seo
+name: rinian-seo:seo
 description: 技术 SEO 审计 — Lighthouse 集成 + 页面信号分析
 ---
 
-# /search-forge:seo — SEO 审计
+# /rinian-seo:seo — SEO 审计
 
 整合 Google Lighthouse 和页面爬取，对目标 URL 进行技术 SEO + 内容 SEO 审计。
 

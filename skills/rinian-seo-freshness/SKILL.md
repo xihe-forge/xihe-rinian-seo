@@ -1,9 +1,9 @@
 ---
-name: search-forge:freshness
+name: rinian-seo:freshness
 description: 检测网站内容新鲜度 — 标记超过 90 天未更新的页面
 ---
 
-# /search-forge:freshness — 内容新鲜度检测
+# /rinian-seo:freshness — 内容新鲜度检测
 
 抓取 sitemap，检查每个页面的最后更新时间，标出过期内容。
 

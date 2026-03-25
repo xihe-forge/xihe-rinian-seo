@@ -1,9 +1,9 @@
 ---
-name: search-forge:presence
+name: rinian-seo:presence
 description: 检查品牌在 Reddit/YouTube/Wikipedia 等 8 大高引用平台的存在状况
 ---
 
-# /search-forge:presence — 平台存在度检测
+# /rinian-seo:presence — 平台存在度检测
 
 检查品牌在 AI 搜索引擎高频引用的 8 个平台上的存在度。
 

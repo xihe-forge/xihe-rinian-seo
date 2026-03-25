@@ -1,9 +1,9 @@
 ---
-name: search-forge:report
+name: rinian-seo:report
 description: 对比两次审计快照 — 量化优化效果的反馈闭环
 ---
 
-# /search-forge:report — 反馈闭环对比报告
+# /rinian-seo:report — 反馈闭环对比报告
 
 对比两次审计快照，量化优化效果。
 

@@ -1,4 +1,4 @@
-# xihe-search-forge — 工具详细文档
+# xihe-rinian-seo — 工具详细文档
 
 > 返回 [README](../README.md)
 

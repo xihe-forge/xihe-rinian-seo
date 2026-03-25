@@ -1,5 +1,5 @@
 {
-  "name": "xihe-search-forge",
+  "name": "xihe-rinian-seo",
   "version": "0.3.0",
   "description": "SEO + AEO + GEO search optimization forge by xihe-forge — audit, monitor, and optimize for both traditional search and AI search engines",
   "type": "module",
@@ -7,7 +7,7 @@
     "node": ">=20.0.0"
   },
   "bin": {
-    "xihe-search-forge": "./scripts/audit.mjs",
+    "xihe-rinian-seo": "./scripts/audit.mjs",
     "xsf": "./scripts/audit.mjs"
   },
   "scripts": {
@@ -31,7 +31,7 @@
     "seo",
     "aeo",
     "geo",
-    "search-forge",
+    "rinian-seo",
     "xihe",
     "xihe-forge",
     "ai-search",

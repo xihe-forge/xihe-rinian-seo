@@ -1,9 +1,9 @@
 ---
-name: search-forge:content
+name: rinian-seo:content
 description: 基于 Princeton GEO 论文的内容优化建议 — 引用+42%、统计+33%
 ---
 
-# /search-forge:content — GEO 内容优化
+# /rinian-seo:content — GEO 内容优化
 
 分析页面内容，基于 Princeton GEO 论文量化发现给出优化建议。
 

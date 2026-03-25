@@ -1,9 +1,9 @@
 ---
-name: search-forge:voice
+name: rinian-seo:voice
 description: 计算品牌在 AI 搜索中的引用占比 vs 竞品
 ---
 
-# /search-forge:voice — AI 声量占比
+# /rinian-seo:voice — AI 声量占比
 
 对比你的品牌和竞品在 AI 搜索引擎中的引用频率。
 

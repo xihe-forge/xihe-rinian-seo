@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const USER_AGENT = "xihe-search-forge/0.2 (SEO audit tool)";
+const USER_AGENT = "xihe-rinian-seo/0.2 (SEO audit tool)";
 const REQUEST_TIMEOUT_MS = 10_000;
 const INTER_REQUEST_DELAY_MS = 1_000;
 

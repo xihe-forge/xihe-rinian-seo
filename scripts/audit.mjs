@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * audit.mjs
- * One-command entry point for the entire xihe-search-forge tool suite.
+ * One-command entry point for the entire xihe-rinian-seo tool suite.
  *
  * Usage:
  *   node scripts/audit.mjs --url https://getsubtextai.com
@@ -429,7 +429,7 @@ function printReport(report) {
   const DIVIDER = "─".repeat(43);
 
   process.stderr.write(`\n${LINE}\n`);
-  process.stderr.write(`  xihe-search-forge — 综合审计报告\n`);
+  process.stderr.write(`  xihe-rinian-seo — 综合审计报告\n`);
   process.stderr.write(`  ${url} (${brand})\n`);
   process.stderr.write(`${LINE}\n\n`);
 
@@ -525,7 +525,7 @@ async function main() {
   const domain = extractDomain(url);
   const brand  = args.brand || brandFromDomain(domain);
 
-  process.stderr.write(`\nxihe-search-forge — 综合审计\n`);
+  process.stderr.write(`\nxihe-rinian-seo — 综合审计\n`);
   process.stderr.write(`URL:    ${url}\n`);
   process.stderr.write(`品牌:   ${brand}\n`);
   process.stderr.write(`域名:   ${domain}\n`);

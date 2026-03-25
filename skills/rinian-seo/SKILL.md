@@ -1,9 +1,9 @@
 ---
-name: search-forge
+name: rinian-seo
 description: 一键全套 SEO + AEO + GEO 审计 — 输入 URL，输出综合报告
 ---
 
-# /search-forge — 综合搜索优化审计
+# /rinian-seo — 综合搜索优化审计
 
 对目标网站执行全套审计：Lighthouse SEO 基线、页面信号爬取、GEO 内容优化分析、平台存在度检测、内容新鲜度监控，以及 AI 搜索引用检测（需 API Key）。
 
