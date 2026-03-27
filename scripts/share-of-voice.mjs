@@ -48,15 +48,15 @@ const ALL_ENGINE_NAMES = ["perplexity", "chatgpt", "gemini", "kimi", "youcom"];
 
 if (!args.domain || !args.keywords) {
   process.stderr.write(
-    `Usage: node share-of-voice.mjs --domain <domain> --keywords <kw1,kw2,...> [options]
+    `用法: node share-of-voice.mjs --domain <域名> --keywords <关键词1,关键词2,...> [选项]
 
-Options:
-  --competitors <domains>    Comma-separated competitor domains to track
-  --engines <names>          Comma-separated engine list (default: all available)
-                             Available: ${ALL_ENGINE_NAMES.join(", ")}
-  --output <path>            Write JSON to file (default: stdout)
+选项:
+  --competitors <domains>    逗号分隔的竞品域名
+  --engines <names>          逗号分隔的引擎名称（默认：全部可用）
+                             可用引擎：${ALL_ENGINE_NAMES.join(", ")}
+  --output <path>            将 JSON 写入文件（默认：stdout）
 
-Human-readable progress is written to stderr; JSON result to stdout (or --output file).
+可读进度输出至 stderr；JSON 结果输出至 stdout（或 --output 文件）。
 `
   );
   process.exit(1);
@@ -120,7 +120,7 @@ const requestedEngineNames = args.engines
 for (const name of requestedEngineNames) {
   if (!ALL_ENGINE_NAMES.includes(name)) {
     process.stderr.write(
-      `Unknown engine: ${name}. Available: ${ALL_ENGINE_NAMES.join(", ")}\n`
+      `未知引擎：${name}。可用引擎：${ALL_ENGINE_NAMES.join(", ")}\n`
     );
     process.exit(1);
   }
@@ -138,12 +138,12 @@ for (const name of requestedEngineNames) {
       unavailable.push({ name, envKey: engine.envKey, setupUrl: engine.setupUrl });
     }
   } catch (err) {
-    process.stderr.write(`Warning: failed to load engine "${name}": ${err.message}\n`);
+    process.stderr.write(`警告：加载引擎 "${name}" 失败：${err.message}\n`);
   }
 }
 
 if (unavailable.length > 0) {
-  process.stderr.write("\nEngines not configured (skipped):\n");
+  process.stderr.write("\n未配置的引擎（已跳过）：\n");
   for (const e of unavailable) {
     process.stderr.write(`  ${e.name}: set ${e.envKey} — ${e.setupUrl}\n`);
   }
@@ -158,7 +158,7 @@ function outputResult(result) {
   const json = JSON.stringify(result, null, 2);
   if (args.output) {
     writeFileSync(args.output, json, "utf8");
-    process.stderr.write(`\nResults written to ${args.output}\n`);
+    process.stderr.write(`\n结果已写入 ${args.output}\n`);
   } else {
     process.stdout.write(json + "\n");
   }
@@ -166,8 +166,8 @@ function outputResult(result) {
 
 if (engines.length === 0) {
   process.stderr.write(
-    "No engines available. Generating template with null values.\n\n" +
-    "Set at least one API key to enable queries:\n" +
+    "无可用引擎，将生成空值模板。\n\n" +
+    "请设置至少一个 API 密钥以启用查询：\n" +
     unavailable.map((e) => `  ${e.name}: ${e.envKey} — ${e.setupUrl}`).join("\n") +
     "\n"
   );
@@ -256,13 +256,13 @@ async function main() {
 
   const totalQueries = keywords.length * engines.length;
 
-  process.stderr.write(`Domain:      ${myDomain}\n`);
-  process.stderr.write(`Competitors: ${competitorDomains.length > 0 ? competitorDomains.join(", ") : "(none)"}\n`);
-  process.stderr.write(`Keywords:    ${keywords.length}\n`);
-  process.stderr.write(`Engines:     ${engineNames.join(", ")}\n`);
+  process.stderr.write(`域名:        ${myDomain}\n`);
+  process.stderr.write(`竞品:        ${competitorDomains.length > 0 ? competitorDomains.join(", ") : "（无）"}\n`);
+  process.stderr.write(`关键词:      ${keywords.length}\n`);
+  process.stderr.write(`引擎:        ${engineNames.join(", ")}\n`);
   process.stderr.write(
-    `Queries:     ${keywords.length} keywords × ${engines.length} engines = ` +
-    `${totalQueries} API calls (domains matched from each response, not queried separately)\n`
+    `查询量:      ${keywords.length} 个关键词 × ${engines.length} 个引擎 = ` +
+    `${totalQueries} 次 API 调用（域名从响应中本地匹配，不单独查询）\n`
   );
   process.stderr.write("\n");
 
@@ -291,14 +291,14 @@ async function main() {
       const result = await queryEngineRaw(engine, kw);
 
       if (result.error) {
-        process.stderr.write(`ERROR: ${result.error}\n`);
+        process.stderr.write(`错误：${result.error}\n`);
       } else {
         const matchedCount = allTrackedDomains.reduce(
           (n, d) => n + (result.urls.some((u) => matchDomain(u, d)) ? 1 : 0),
           0
         );
         process.stderr.write(
-          `${result.urls.length} url(s) total, ${matchedCount} tracked domain(s) cited\n`
+          `共 ${result.urls.length} 个 URL，${matchedCount} 个追踪域名被引用\n`
         );
       }
 
@@ -485,21 +485,21 @@ async function main() {
   // Human-readable summary to stderr
   // ---------------------------------------------------------------------------
 
-  process.stderr.write("\n=== Share of Voice Summary ===\n\n");
-  process.stderr.write(`Domain:          ${myDomain}\n`);
-  process.stderr.write(`Your citations:  ${yourTotalCitations} / ${totalTrackedCitations} tracked\n`);
+  process.stderr.write("\n=== 声量份额汇总 ===\n\n");
+  process.stderr.write(`域名:            ${myDomain}\n`);
+  process.stderr.write(`我方引用量:      ${yourTotalCitations} / ${totalTrackedCitations} 次追踪引用\n`);
 
   if (overallShareOfVoice) {
-    process.stderr.write("\nOverall SoV (among tracked brands):\n");
+    process.stderr.write("\n整体声量份额（仅限追踪品牌）：\n");
     for (const domain of allTrackedDomains) {
       const pct = Math.round((overallShareOfVoice[domain] || 0) * 100);
       const bar = "█".repeat(Math.round(pct / 5));
-      const marker = domain === myDomain ? " ← you" : "";
+      const marker = domain === myDomain ? " ← 我方" : "";
       process.stderr.write(`  ${domain.padEnd(30)} ${String(pct).padStart(3)}%  ${bar}${marker}\n`);
     }
   }
 
-  process.stderr.write("\nTop actions:\n");
+  process.stderr.write("\n优先操作：\n");
   for (const action of topActions) {
     process.stderr.write(`  • ${action}\n`);
   }
@@ -540,6 +540,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(`Fatal error: ${err.message}\n`);
+  process.stderr.write(`致命错误：${err.message}\n`);
   process.exit(1);
 });

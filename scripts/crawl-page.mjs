@@ -290,6 +290,9 @@ const AI_BOTS = [
   "Amazonbot",
 ];
 
+// NOTE: This parser only evaluates root-level rules (Disallow: / and Allow: /).
+// Path-scoped rules (e.g. Disallow: /private/) are not evaluated against specific URLs.
+// This is sufficient for most AI bot blocking which uses blanket Disallow: / rules.
 function parseRobotsTxtForAiBots(robotsTxtContent) {
   if (!robotsTxtContent || robotsTxtContent.trim() === "") {
     return {
@@ -304,11 +307,18 @@ function parseRobotsTxtForAiBots(robotsTxtContent) {
   // Parse all user-agent sections into a map: lowercased agent -> { allow: string[], disallow: string[] }
   const sections = {};
   let currentAgents = [];
+  let seenDirective = false; // tracks whether any Allow/Disallow has been seen in the current group
 
   for (const rawLine of robotsTxtContent.split(/\r?\n/)) {
     const line = rawLine.split("#")[0].trim(); // strip inline comments
     if (line === "") {
-      currentAgents = [];
+      // Only reset the group on blank line if we've already seen a directive (Allow/Disallow).
+      // A blank line between consecutive User-agent lines in the same group is legal and
+      // should not prematurely start a new group.
+      if (seenDirective) {
+        currentAgents = [];
+        seenDirective = false;
+      }
       continue;
     }
 
@@ -322,14 +332,17 @@ function parseRobotsTxtForAiBots(robotsTxtContent) {
       const agent = value.toLowerCase();
       if (!sections[agent]) sections[agent] = { allow: [], disallow: [] };
       currentAgents.push(agent);
+      seenDirective = false; // new User-agent line resets the directive flag
     } else if (field === "disallow") {
       for (const agent of currentAgents) {
         sections[agent].disallow.push(value);
       }
+      seenDirective = true;
     } else if (field === "allow") {
       for (const agent of currentAgents) {
         sections[agent].allow.push(value);
       }
+      seenDirective = true;
     }
   }
 
@@ -340,14 +353,14 @@ function parseRobotsTxtForAiBots(robotsTxtContent) {
     // Check if there's a Disallow: / (covers everything) or Disallow: (empty = allow all)
     const hasDisallowAll = rules.disallow.some((v) => v === "/");
     const hasDisallowEmpty = rules.disallow.some((v) => v === "");
-    const hasAllowRoot = rules.allow.some((v) => v === "/" || v === "");
+    const hasAllowRoot = rules.allow.some((v) => v === "/");
 
     if (hasDisallowEmpty) {
       // Empty Disallow means "allow everything"
       return { status: "allowed", rule: "Disallow:" };
     }
     if (hasDisallowAll && hasAllowRoot) {
-      // Allow takes precedence over Disallow per robots.txt spec
+      // When both Allow: / and Disallow: / exist for the same path specificity, Allow wins (Google interpretation)
       return { status: "allowed", rule: "Allow: /" };
     }
     if (hasDisallowAll) {

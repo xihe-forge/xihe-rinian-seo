@@ -70,6 +70,8 @@ export async function query(keyword, domain) {
       urls: matched,
       snippet: content ? content.slice(0, 300).replace(/\s+/g, " ").trim() : null,
     };
+  } catch (err) {
+    return { urls: [], snippet: "", error: err.message };
   } finally {
     clearTimeout(timer);
   }

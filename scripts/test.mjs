@@ -598,7 +598,7 @@ describe("content-optimize.mjs", () => {
         "Should exit with non-zero code"
       );
       assert.ok(
-        err.stderr?.includes("Error") || err.stderr?.includes("error") || err.stderr?.includes("reading"),
+        err.stderr?.includes("Error") || err.stderr?.includes("error") || err.stderr?.includes("reading") || err.stderr?.includes("失败"),
         `stderr should mention an error. Got: ${err.stderr?.slice(0, 300)}`
       );
     }

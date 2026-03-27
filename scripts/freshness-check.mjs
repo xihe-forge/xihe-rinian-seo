@@ -197,40 +197,16 @@ async function checkPage(entry, semaphore) {
     let httpStatus = null;
     let fetchError = null;
 
-    // Try HEAD first for Last-Modified header
+    // Single GET gives us both headers and body — no need for a separate HEAD
     try {
-      const headRes = await fetchWithTimeout(url, { method: "HEAD" });
-      httpStatus = headRes.status;
-      lastModifiedHeader = headRes.headers.get("last-modified") || null;
+      const getRes = await fetchWithTimeout(url);
+      httpStatus = getRes.status;
+      lastModifiedHeader = getRes.headers.get("last-modified") || null;
+      if (getRes.ok) {
+        html = await getRes.text();
+      }
     } catch (err) {
       fetchError = err.name === "AbortError" ? "timeout" : err.message;
-    }
-
-    // If HEAD succeeded and we need page content, do GET
-    if (httpStatus && httpStatus >= 200 && httpStatus < 300) {
-      try {
-        const getRes = await fetchWithTimeout(url);
-        if (getRes.ok) {
-          html = await getRes.text();
-          if (!lastModifiedHeader) {
-            lastModifiedHeader = getRes.headers.get("last-modified") || null;
-          }
-        }
-      } catch {
-        // GET failed — we still have HEAD info
-      }
-    } else if (!httpStatus || httpStatus < 200 || httpStatus >= 300) {
-      // HEAD failed entirely OR returned any non-2xx — try GET
-      try {
-        const getRes = await fetchWithTimeout(url);
-        httpStatus = getRes.status;
-        if (getRes.ok) {
-          html = await getRes.text();
-          lastModifiedHeader = getRes.headers.get("last-modified") || null;
-        }
-      } catch (err) {
-        fetchError = err.name === "AbortError" ? "timeout" : err.message;
-      }
     }
 
     // Handle non-2xx or errors
@@ -359,10 +335,10 @@ async function main() {
 
   if (!rawUrl) {
     process.stderr.write(
-      `Usage: node scripts/freshness-check.mjs --url <url> [--threshold <days>] [--output <file>]\n\n` +
-      `  --url        Base URL of the site to check (required)\n` +
-      `  --threshold  Days since last update to flag as stale (default: 90)\n` +
-      `  --output     Write JSON to file instead of stdout\n`
+      `用法: node scripts/freshness-check.mjs --url <url> [--threshold <天数>] [--output <文件>]\n\n` +
+      `  --url        要检查的站点根 URL（必填）\n` +
+      `  --threshold  超过多少天未更新则标记为过时（默认：90）\n` +
+      `  --output     将 JSON 写入文件（默认：stdout）\n`
     );
     process.exit(1);
   }
@@ -372,46 +348,46 @@ async function main() {
   try {
     baseUrl = new URL(rawUrl.includes("://") ? rawUrl : `https://${rawUrl}`);
   } catch {
-    process.stderr.write(`Invalid URL: ${rawUrl}\n`);
+    process.stderr.write(`无效 URL：${rawUrl}\n`);
     process.exit(1);
   }
 
   const domain = baseUrl.hostname;
   const checkedAt = new Date().toISOString();
 
-  process.stderr.write(`Freshness check: ${baseUrl.href}\n`);
-  process.stderr.write(`Threshold: ${threshold} days\n\n`);
+  process.stderr.write(`内容新鲜度检查：${baseUrl.href}\n`);
+  process.stderr.write(`过时阈值：${threshold} 天\n\n`);
 
   // Step 1: Fetch sitemap
   let urlEntries = [];
   const sitemapUrl = `${baseUrl.origin}/sitemap.xml`;
 
-  process.stderr.write(`Fetching sitemap: ${sitemapUrl} ... `);
+  process.stderr.write(`正在获取 Sitemap：${sitemapUrl} ... `);
   try {
     const sitemapRes = await fetchWithTimeout(sitemapUrl);
     if (sitemapRes.ok) {
       const xml = await sitemapRes.text();
       const parsed = parseSitemap(xml);
       if (parsed.isIndex && parsed.childSitemaps.length > 0) {
-        process.stderr.write(`sitemap index with ${parsed.childSitemaps.length} child sitemaps — fetching...\n`);
+        process.stderr.write(`Sitemap 索引，包含 ${parsed.childSitemaps.length} 个子 Sitemap — 正在获取...\n`);
         const childSem = createSemaphore(MAX_CONCURRENCY);
         const childResults = await Promise.all(
           parsed.childSitemaps.map((childUrl) =>
             childSem.acquire().then(async () => {
               try {
-                process.stderr.write(`  Fetching child sitemap: ${childUrl} ... `);
+                process.stderr.write(`  正在获取子 Sitemap：${childUrl} ... `);
                 const childRes = await fetchWithTimeout(childUrl);
                 if (childRes.ok) {
                   const childXml = await childRes.text();
                   const childParsed = parseSitemap(childXml);
-                  process.stderr.write(`${childParsed.urls.length} URLs\n`);
+                  process.stderr.write(`${childParsed.urls.length} 个 URL\n`);
                   return childParsed.urls;
                 } else {
-                  process.stderr.write(`${childRes.status} — skipped\n`);
+                  process.stderr.write(`${childRes.status} — 已跳过\n`);
                   return [];
                 }
               } catch (err) {
-                process.stderr.write(`failed (${err.message}) — skipped\n`);
+                process.stderr.write(`失败（${err.message}）— 已跳过\n`);
                 return [];
               } finally {
                 childSem.release();
@@ -420,21 +396,21 @@ async function main() {
           )
         );
         urlEntries = childResults.flat();
-        process.stderr.write(`Total URLs from sitemap index: ${urlEntries.length}\n`);
+        process.stderr.write(`Sitemap 索引共 ${urlEntries.length} 个 URL\n`);
       } else {
         urlEntries = parsed.urls;
-        process.stderr.write(`${urlEntries.length} URLs found\n`);
+        process.stderr.write(`共找到 ${urlEntries.length} 个 URL\n`);
       }
     } else {
-      process.stderr.write(`${sitemapRes.status} — falling back to nav link crawl\n`);
+      process.stderr.write(`${sitemapRes.status} — 回退至导航链接爬取\n`);
     }
   } catch (err) {
-    process.stderr.write(`failed (${err.message}) — falling back to nav link crawl\n`);
+    process.stderr.write(`失败（${err.message}）— 回退至导航链接爬取\n`);
   }
 
   // Fallback: crawl nav links from homepage
   if (urlEntries.length === 0) {
-    process.stderr.write(`Crawling homepage for nav links: ${baseUrl.href} ... `);
+    process.stderr.write(`正在爬取主页导航链接：${baseUrl.href} ... `);
     try {
       const homeRes = await fetchWithTimeout(baseUrl.href);
       if (homeRes.ok) {
@@ -444,21 +420,21 @@ async function main() {
         if (!urlEntries.some((e) => e.url === baseUrl.href)) {
           urlEntries.unshift({ url: baseUrl.href, lastmod: null });
         }
-        process.stderr.write(`${urlEntries.length} links found\n`);
+        process.stderr.write(`共找到 ${urlEntries.length} 个链接\n`);
       } else {
         process.stderr.write(`${homeRes.status}\n`);
       }
     } catch (err) {
-      process.stderr.write(`failed (${err.message})\n`);
+      process.stderr.write(`失败（${err.message}）\n`);
     }
   }
 
   if (urlEntries.length === 0) {
-    process.stderr.write("No pages to check.\n");
+    process.stderr.write("无可检查的页面。\n");
     process.exit(1);
   }
 
-  process.stderr.write(`\nChecking ${urlEntries.length} pages (concurrency: ${MAX_CONCURRENCY})...\n`);
+  process.stderr.write(`\n正在检查 ${urlEntries.length} 个页面（并发数：${MAX_CONCURRENCY}）...\n`);
 
   // Step 2: Check each page
   const semaphore = createSemaphore(MAX_CONCURRENCY);
@@ -517,17 +493,17 @@ async function main() {
   };
 
   // Human-readable summary to stderr
-  process.stderr.write(`\n--- Summary ---\n`);
-  process.stderr.write(`Score:         ${overallScore}/100\n`);
-  process.stderr.write(`Total pages:   ${pages.length}\n`);
-  process.stderr.write(`Fresh:         ${freshPages.length}\n`);
-  process.stderr.write(`Stale:         ${stalePages.length}\n`);
-  process.stderr.write(`Unknown:       ${unknownPages.length}\n`);
-  process.stderr.write(`Errors:        ${errorPages.length}\n`);
-  if (avgDays !== null) process.stderr.write(`Avg age:       ${avgDays} days\n`);
-  if (oldestPage) process.stderr.write(`Oldest page:   ${oldestPage.url} (${oldestPage.daysSinceUpdate} days)\n`);
+  process.stderr.write(`\n--- 汇总 ---\n`);
+  process.stderr.write(`评分:          ${overallScore}/100\n`);
+  process.stderr.write(`总页面数:      ${pages.length}\n`);
+  process.stderr.write(`新鲜:          ${freshPages.length}\n`);
+  process.stderr.write(`过时:          ${stalePages.length}\n`);
+  process.stderr.write(`未知:          ${unknownPages.length}\n`);
+  process.stderr.write(`错误:          ${errorPages.length}\n`);
+  if (avgDays !== null) process.stderr.write(`平均更新天数:  ${avgDays} 天\n`);
+  if (oldestPage) process.stderr.write(`最旧页面:      ${oldestPage.url}（${oldestPage.daysSinceUpdate} 天）\n`);
   if (topActions.length > 0) {
-    process.stderr.write(`\nTop actions:\n`);
+    process.stderr.write(`\n优先操作：\n`);
     for (const action of topActions) {
       process.stderr.write(`  - ${action}\n`);
     }
@@ -538,13 +514,13 @@ async function main() {
 
   if (output) {
     writeFileSync(output, json, "utf8");
-    process.stderr.write(`Results written to ${output}\n`);
+    process.stderr.write(`结果已写入 ${output}\n`);
   } else {
     process.stdout.write(json + "\n");
   }
 }
 
 main().catch((err) => {
-  process.stderr.write(`Fatal error: ${err.message}\n`);
+  process.stderr.write(`致命错误：${err.message}\n`);
   process.exit(1);
 });

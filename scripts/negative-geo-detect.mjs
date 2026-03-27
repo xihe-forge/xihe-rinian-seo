@@ -25,13 +25,13 @@ const { values: args } = parseArgs({
 
 if (!args.domain || !args.keywords || !args.baseline) {
   process.stderr.write(
-    `Usage: node scripts/negative-geo-detect.mjs --domain <domain> --keywords <kw1,kw2,...> --baseline <path> [--output <path>]
+    `用法: node scripts/negative-geo-detect.mjs --domain <域名> --keywords <关键词1,关键词2,...> --baseline <路径> [--output <路径>]
 
-Options:
-  --domain <domain>      Target domain to monitor (e.g. getsubtextai.com)
-  --keywords <list>      Comma-separated keywords to check
-  --baseline <path>      Previous check-ai-citation.mjs output JSON for comparison
-  --output <path>        Write alert report to file (default: stdout)
+选项:
+  --domain <domain>      要监控的目标域名（例如 getsubtextai.com）
+  --keywords <list>      逗号分隔的检查关键词
+  --baseline <path>      上次 check-ai-citation.mjs 输出的 JSON，用于对比
+  --output <path>        将告警报告写入文件（默认：stdout）
 `
   );
   process.exit(1);
@@ -236,7 +236,7 @@ function outputResult(result) {
   const json = JSON.stringify(result, null, 2);
   if (args.output) {
     writeFileSync(args.output, json, "utf8");
-    process.stderr.write(`Results written to ${args.output}\n`);
+    process.stderr.write(`结果已写入 ${args.output}\n`);
   } else {
     process.stdout.write(json + "\n");
   }
@@ -267,7 +267,7 @@ let baseline;
 try {
   baseline = JSON.parse(readFileSync(args.baseline, "utf8"));
 } catch (err) {
-  process.stderr.write(`Failed to load baseline: ${err.message}\n`);
+  process.stderr.write(`加载基准数据失败：${err.message}\n`);
   process.exit(1);
 }
 
@@ -291,12 +291,12 @@ for (const name of ALL_ENGINE_NAMES) {
       unavailableEngines.push({ name, envKey: engine.envKey, setupUrl: engine.setupUrl });
     }
   } catch (err) {
-    process.stderr.write(`Warning: failed to load engine "${name}": ${err.message}\n`);
+    process.stderr.write(`警告：加载引擎 "${name}" 失败：${err.message}\n`);
   }
 }
 
 if (unavailableEngines.length > 0) {
-  process.stderr.write("Engines not configured (skipped):\n");
+  process.stderr.write("未配置的引擎（已跳过）：\n");
   for (const e of unavailableEngines) {
     process.stderr.write(`  ${e.name}: set ${e.envKey} — ${e.setupUrl}\n`);
   }
@@ -308,7 +308,7 @@ if (unavailableEngines.length > 0) {
 // ---------------------------------------------------------------------------
 
 if (engines.length === 0) {
-  process.stderr.write("No engines available. Performing baseline-only negative pattern analysis.\n\n");
+  process.stderr.write("无可用引擎，仅基于基准数据执行负面模式分析。\n\n");
 
   const alerts = [];
 
@@ -368,10 +368,10 @@ if (engines.length === 0) {
 // Live check
 // ---------------------------------------------------------------------------
 
-process.stderr.write(`Domain: ${domain}\n`);
-process.stderr.write(`Keywords: ${keywords.join(", ")}\n`);
-process.stderr.write(`Engines: ${engines.map((e) => e.name).join(", ")}\n`);
-process.stderr.write(`Baseline: ${baselineDate ?? "unknown date"}\n\n`);
+process.stderr.write(`域名:     ${domain}\n`);
+process.stderr.write(`关键词:   ${keywords.join(", ")}\n`);
+process.stderr.write(`引擎:     ${engines.map((e) => e.name).join(", ")}\n`);
+process.stderr.write(`基准日期: ${baselineDate ?? "未知"}\n\n`);
 
 const currentResults = []; // [{ keyword, results: { engineName: { cited, urls, snippet, sentiment } } }]
 
@@ -397,10 +397,10 @@ for (let i = 0; i < keywords.length; i++) {
       }
 
       results[engine.name] = engineResult;
-      process.stderr.write(engineResult.cited ? "CITED\n" : "not cited\n");
+      process.stderr.write(engineResult.cited ? "已引用\n" : "未引用\n");
     } catch (err) {
       results[engine.name] = { cited: false, urls: [], snippet: null, error: err.message, failed: true };
-      process.stderr.write(`ERROR: ${err.message}\n`);
+      process.stderr.write(`错误：${err.message}\n`);
     }
   }
 
@@ -468,6 +468,7 @@ for (const currEntry of currentResults) {
     }
 
     // ---- Alert: new negative source not in baseline ----
+    if (curr.failed) continue; // skip failed engine results
     if (curr.sentiment?.label === "negative") {
       const prevUrls = new Set(prev?.urls ?? []);
       const newNegUrls = (curr.urls ?? []).filter((u) => !prevUrls.has(u));
@@ -566,25 +567,23 @@ for (const [srcDomain, occurrences] of Object.entries(sourceDomainMap)) {
 for (const currEntry of currentResults) {
   const kw = currEntry.keyword;
   const enginesBySourceDomain = {};
-  for (const engine of engines) {
-    for (const url of currEntry.results[engine.name]?.urls ?? []) {
+  for (const [engineName, engineResult] of Object.entries(currEntry.results)) {
+    if (!engineResult?.urls?.length) continue;
+    // Only count if this engine had negative sentiment for this keyword
+    if (engineResult.sentiment?.label !== "negative") continue;
+    for (const url of engineResult.urls) {
       const d = extractDomain(url);
       if (!d || d === domain) continue;
       if (!enginesBySourceDomain[d]) enginesBySourceDomain[d] = new Set();
-      enginesBySourceDomain[d].add(engine.name);
+      enginesBySourceDomain[d].add(engineName);
     }
   }
   for (const [srcDomain, enginesSet] of Object.entries(enginesBySourceDomain)) {
     if (enginesSet.size >= 2 && !suspiciousSources.includes(srcDomain)) {
-      // Only flag if there is negative sentiment in at least one engine for this keyword.
-      // A brand-new domain with no negative evidence is not sufficient to trigger the alert.
+      // enginesBySourceDomain is already filtered to negative-sentiment engines only
       const baselineKwEngines = baselineLookup[kw] ?? {};
       const baselineUrlsForKw = Object.values(baselineKwEngines).flatMap((r) => r.urls ?? []);
       const isNewDomain = !baselineUrlsForKw.some((u) => extractDomain(u) === srcDomain);
-      const hasNegativeEngine = [...enginesSet].some(
-        (eName) => currEntry.results[eName]?.sentiment?.label === "negative"
-      );
-      if (!hasNegativeEngine) continue;
 
       suspiciousSources.push(srcDomain);
       alerts.push({
@@ -651,30 +650,30 @@ const recommendations = generateRecommendations(alerts, uniqueSuspiciousSources,
 // Print human-readable summary to stderr
 // ---------------------------------------------------------------------------
 
-process.stderr.write("\n--- Negative GEO Detection Report ---\n");
-process.stderr.write(`Risk level: ${riskLevel.toUpperCase()}\n`);
-process.stderr.write(`Total alerts: ${alerts.length}\n`);
+process.stderr.write("\n--- 负面 GEO 检测报告 ---\n");
+process.stderr.write(`风险等级: ${riskLevel.toUpperCase()}\n`);
+process.stderr.write(`告警总数: ${alerts.length}\n`);
 if (alerts.length > 0) {
-  process.stderr.write(`  critical: ${bySeverity.critical}  high: ${bySeverity.high}  medium: ${bySeverity.medium}  low: ${bySeverity.low}\n`);
+  process.stderr.write(`  严重: ${bySeverity.critical}  高: ${bySeverity.high}  中: ${bySeverity.medium}  低: ${bySeverity.low}\n`);
 }
 if (uniqueSuspiciousSources.length > 0) {
-  process.stderr.write(`Suspicious sources: ${uniqueSuspiciousSources.join(", ")}\n`);
+  process.stderr.write(`可疑来源: ${uniqueSuspiciousSources.join(", ")}\n`);
 }
 const baselineSentimentTotal = baselineSentimentCount.positive + baselineSentimentCount.neutral + baselineSentimentCount.negative;
-process.stderr.write("\nSentiment trend:\n");
+process.stderr.write("\n情感趋势：\n");
 if (baselineSentimentTotal === 0) {
-  process.stderr.write(`  baseline  — N/A (sentiment field not present in baseline)\n`);
+  process.stderr.write(`  基准  — N/A（基准数据中无情感字段）\n`);
 } else {
   process.stderr.write(
-    `  baseline  — positive: ${baselineSentimentCount.positive}, neutral: ${baselineSentimentCount.neutral}, negative: ${baselineSentimentCount.negative}\n`
+    `  基准  — 正面: ${baselineSentimentCount.positive}，中性: ${baselineSentimentCount.neutral}，负面: ${baselineSentimentCount.negative}\n`
   );
 }
 process.stderr.write(
-  `  current   — positive: ${currentSentimentCount.positive}, neutral: ${currentSentimentCount.neutral}, negative: ${currentSentimentCount.negative}\n`
+  `  当前  — 正面: ${currentSentimentCount.positive}，中性: ${currentSentimentCount.neutral}，负面: ${currentSentimentCount.negative}\n`
 );
-process.stderr.write(`\nCitation changes: +${gained} gained, -${lost} lost, ${unchanged} unchanged\n`);
+process.stderr.write(`\n引用变化: +${gained} 新增，-${lost} 消失，${unchanged} 不变\n`);
 if (recommendations.length > 0) {
-  process.stderr.write("\nRecommendations:\n");
+  process.stderr.write("\n建议：\n");
   for (const rec of recommendations) {
     process.stderr.write(`  • ${rec}\n`);
   }

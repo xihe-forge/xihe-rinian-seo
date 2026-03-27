@@ -677,19 +677,19 @@ function buildTextFromCrawlData(crawlData) {
 // ---------------------------------------------------------------------------
 
 async function crawlAndEnrich(url) {
-  process.stderr.write(`Fetching ${url} ...\n`);
+  process.stderr.write(`正在获取 ${url} ...\n`);
 
   let pageText;
   let pageRes;
   try {
     pageRes = await fetchWithTimeout(url);
     if (!pageRes.ok) {
-      process.stderr.write(`HTTP ${pageRes.status} for ${url} — cannot analyze error pages\n`);
+      process.stderr.write(`HTTP ${pageRes.status} for ${url} — 无法分析错误页面\n`);
       process.exit(1);
     }
     pageText = await pageRes.text();
   } catch (err) {
-    process.stderr.write(`Failed to fetch URL: ${err.message}\n`);
+    process.stderr.write(`获取 URL 失败：${err.message}\n`);
     process.exit(1);
   }
 
@@ -698,7 +698,7 @@ async function crawlAndEnrich(url) {
   try {
     ({ load } = await import("cheerio"));
   } catch {
-    process.stderr.write("Error: --url mode requires cheerio. Run: npm install cheerio\n");
+    process.stderr.write("错误：--url 模式需要 cheerio，请运行：npm install cheerio\n");
     process.exit(1);
   }
   const $ = load(pageText);
@@ -865,12 +865,12 @@ function printSummary(result) {
   };
 
   process.stderr.write("\n");
-  process.stderr.write(`  GEO Content Optimization Report\n`);
+  process.stderr.write(`  GEO 内容优化报告\n`);
   process.stderr.write(`  URL: ${result.url}\n`);
-  process.stderr.write(`  Overall Score: ${result.overallScore}/100\n`);
-  process.stderr.write(`  Word Count: ${result.content.wordCount}\n`);
+  process.stderr.write(`  综合评分：${result.overallScore}/100\n`);
+  process.stderr.write(`  字数：${result.content.wordCount}\n`);
   process.stderr.write("\n");
-  process.stderr.write(`  Dimension Scores\n`);
+  process.stderr.write(`  各维度评分\n`);
   process.stderr.write(`  ${"─".repeat(60)}\n`);
 
   for (const dim of result.dimensions) {
@@ -880,7 +880,7 @@ function printSummary(result) {
   }
 
   process.stderr.write("\n");
-  process.stderr.write(`  Top Actions\n`);
+  process.stderr.write(`  优先操作\n`);
   process.stderr.write(`  ${"─".repeat(60)}\n`);
   for (let i = 0; i < result.topActions.length; i++) {
     process.stderr.write(`  ${i + 1}. ${result.topActions[i]}\n`);
@@ -909,7 +909,7 @@ async function main() {
       try {
         rawJson = readFileSync(fullPath, "utf8");
       } catch (err) {
-        process.stderr.write(`Error reading input file: ${err.message}\n`);
+        process.stderr.write(`读取输入文件失败：${err.message}\n`);
         process.exit(1);
       }
     } else if (!process.stdin.isTTY) {
@@ -921,9 +921,9 @@ async function main() {
       }
     } else {
       process.stderr.write(
-        `Usage: node scripts/content-optimize.mjs --input data/crawl-result.json [--output suggestions.json]\n` +
-        `       node scripts/content-optimize.mjs --url https://example.com [--output suggestions.json]\n` +
-        `       node scripts/crawl-page.mjs https://example.com | node scripts/content-optimize.mjs\n`
+        `用法: node scripts/content-optimize.mjs --input data/crawl-result.json [--output suggestions.json]\n` +
+        `      node scripts/content-optimize.mjs --url https://example.com [--output suggestions.json]\n` +
+        `      node scripts/crawl-page.mjs https://example.com | node scripts/content-optimize.mjs\n`
       );
       process.exit(1);
     }
@@ -931,13 +931,13 @@ async function main() {
     try {
       crawlData = JSON.parse(rawJson);
     } catch (err) {
-      process.stderr.write(`Error parsing JSON input: ${err.message}\n`);
+      process.stderr.write(`解析 JSON 输入失败：${err.message}\n`);
       process.exit(1);
     }
   }
 
   if (crawlData.error) {
-    process.stderr.write(`Crawl data contains error: ${crawlData.error}\n`);
+    process.stderr.write(`爬取数据包含错误：${crawlData.error}\n`);
     process.exit(1);
   }
 
@@ -950,13 +950,13 @@ async function main() {
   if (outputPath) {
     const fullOutput = resolve(process.cwd(), outputPath);
     writeFileSync(fullOutput, json, "utf8");
-    process.stderr.write(`Results saved to ${fullOutput}\n`);
+    process.stderr.write(`结果已保存至 ${fullOutput}\n`);
   } else {
     process.stdout.write(json + "\n");
   }
 }
 
 main().catch((err) => {
-  process.stderr.write(`Fatal: ${err.message || err}\n`);
+  process.stderr.write(`致命错误：${err.message || err}\n`);
   process.exit(1);
 });

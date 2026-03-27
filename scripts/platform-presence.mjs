@@ -24,9 +24,9 @@ const { values: args } = parseArgs({
 });
 
 if (!args.brand || !args.domain) {
-  process.stderr.write(`Usage: node platform-presence.mjs --brand <name> --domain <domain> [--output <file>]
+  process.stderr.write(`用法: node platform-presence.mjs --brand <名称> --domain <域名> [--output <文件>]
 
-Examples:
+示例:
   node scripts/platform-presence.mjs --brand "SubtextAI" --domain "getsubtextai.com"
   node scripts/platform-presence.mjs --brand "SubtextAI" --domain "getsubtextai.com" --output presence.json
 `);
@@ -692,10 +692,10 @@ function buildTopActions(platforms) {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  process.stderr.write(`\nPlatform Presence Audit\n`);
-  process.stderr.write(`  Brand:  ${brand}\n`);
-  process.stderr.write(`  Domain: ${domain}\n`);
-  process.stderr.write(`  Date:   ${new Date().toISOString()}\n\n`);
+  process.stderr.write(`\n平台存在感审计\n`);
+  process.stderr.write(`  品牌:   ${brand}\n`);
+  process.stderr.write(`  域名:   ${domain}\n`);
+  process.stderr.write(`  时间:   ${new Date().toISOString()}\n\n`);
 
   const results = [];
 
@@ -716,7 +716,7 @@ async function main() {
     const found    = result.status === "found";
     const unknown  = result.status === "unknown";
     const score    = found ? (result.score ?? 0) : 0;
-    const label    = unknown ? "UNKNOWN" : found ? `FOUND  (score ${score}/10)` : "NOT FOUND";
+    const label    = unknown ? "未知" : found ? `已发现（评分 ${score}/10）` : "未发现";
 
     process.stderr.write(`${label}\n`);
 
@@ -736,9 +736,9 @@ async function main() {
   const overallScore = computeOverallScore(results);
   const topActions   = buildTopActions(results);
 
-  process.stderr.write(`\nOverall presence score: ${overallScore !== null ? `${overallScore}/100` : "n/a (all platforms unknown)"}\n`);
+  process.stderr.write(`\n平台综合存在感评分：${overallScore !== null ? `${overallScore}/100` : "无（所有平台均未知）"}\n`);
   if (topActions.length > 0) {
-    process.stderr.write(`\nTop actions:\n`);
+    process.stderr.write(`\n优先操作：\n`);
     for (const action of topActions.slice(0, 5)) {
       process.stderr.write(`  • ${action}\n`);
     }
@@ -758,13 +758,13 @@ async function main() {
 
   if (args.output) {
     writeFileSync(args.output, json, "utf8");
-    process.stderr.write(`Results written to ${args.output}\n`);
+    process.stderr.write(`结果已写入 ${args.output}\n`);
   } else {
     process.stdout.write(json + "\n");
   }
 }
 
 main().catch((err) => {
-  process.stderr.write(`Fatal error: ${err.message}\n`);
+  process.stderr.write(`致命错误：${err.message}\n`);
   process.exit(1);
 });

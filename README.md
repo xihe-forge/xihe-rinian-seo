@@ -17,6 +17,10 @@ Forged by [Xihe AI](https://github.com/xihe-forge), for everyone who needs to be
 
 > v0.3 · 11 工具 / tools · 5 AI 引擎 / engines · 48 tests · by [xihe-forge](https://github.com/xihe-forge)
 
+<p align="center">
+  <img src="./demo.svg" alt="xihe-rinian-seo audit demo" width="700">
+</p>
+
 ---
 
 ## 快速开始 / Quick Start

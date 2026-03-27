@@ -26,6 +26,27 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
+// Concurrency limiter (future-proofing for more parallel steps)
+// ---------------------------------------------------------------------------
+
+function pLimit(concurrency) {
+  let active = 0;
+  const queue = [];
+  function next() {
+    if (active >= concurrency || queue.length === 0) return;
+    active++;
+    const { fn, resolve, reject } = queue.shift();
+    fn().then(resolve, reject).finally(() => { active--; next(); });
+  }
+  return (fn) => new Promise((resolve, reject) => {
+    queue.push({ fn, resolve, reject });
+    next();
+  });
+}
+
+const limit = pLimit(3);
+
+// ---------------------------------------------------------------------------
 // Active child process tracking (for SIGINT cleanup)
 // ---------------------------------------------------------------------------
 
@@ -435,7 +456,7 @@ function printReport(report) {
 
   const renderRow = (label, value, max = 100, unit = "/100") => {
     if (value == null) {
-      process.stderr.write(`  ${label.padEnd(26)} N/A    (skipped)\n`);
+      process.stderr.write(`  ${label.padEnd(26)} N/A（已跳过）\n`);
       return;
     }
     const bar = progressBar(value, max);
@@ -443,19 +464,19 @@ function printReport(report) {
   };
 
   renderRow("Lighthouse SEO:",       scores.lighthouse?.seo         ?? null);
-  renderRow("Best Practices:",       scores.lighthouse?.bestPractices ?? null);
-  renderRow("Content Optimization:", scores.contentOptimization     ?? null);
-  renderRow("Platform Presence:",    scores.platformPresence        ?? null);
-  renderRow("Content Freshness:",    scores.freshness               ?? null);
-  renderRow("AI Citation Rate:",     scores.aiCitation              ?? null, 100, "%   ");
-  renderRow("Share of Voice:",       scores.shareOfVoice            ?? null, 100, "%   ");
+  renderRow("最佳实践:",              scores.lighthouse?.bestPractices ?? null);
+  renderRow("内容优化:",              scores.contentOptimization     ?? null);
+  renderRow("平台存在感:",            scores.platformPresence        ?? null);
+  renderRow("内容新鲜度:",            scores.freshness               ?? null);
+  renderRow("AI 引用率:",             scores.aiCitation              ?? null, 100, "%   ");
+  renderRow("声量份额:",              scores.shareOfVoice            ?? null, 100, "%   ");
   process.stderr.write(`  ${DIVIDER}\n`);
-  renderRow("Overall:",              scores.overall                 ?? null);
+  renderRow("综合评分:",              scores.overall                 ?? null);
   process.stderr.write("\n");
 
   if (topActions?.length > 0) {
     const top3 = topActions.slice(0, 3);
-    process.stderr.write(`  Top ${top3.length} Actions:\n`);
+    process.stderr.write(`  优先操作（前 ${top3.length} 条）：\n`);
     top3.forEach((action, i) => {
       // Strip long action text for display
       const display = action.length > 72 ? action.slice(0, 69) + "..." : action;
@@ -465,7 +486,7 @@ function printReport(report) {
   }
 
   if (outputPath) {
-    process.stderr.write(`  Full report: ${outputPath}\n`);
+    process.stderr.write(`  完整报告：${outputPath}\n`);
   }
 
   process.stderr.write(`${LINE}\n\n`);
@@ -509,13 +530,13 @@ async function main() {
 
   if (!args.url) {
     process.stderr.write(
-      `Usage: node scripts/audit.mjs --url <URL> [options]\n\n` +
-      `  --url          Target URL (required)\n` +
-      `  --brand        Brand name (default: derived from domain)\n` +
-      `  --keywords     Comma-separated keywords for AI citation check\n` +
-      `  --competitors  Comma-separated competitor domains for SoV\n` +
-      `  --output       Write JSON report to file (default: stdout)\n\n` +
-      `Example:\n` +
+      `用法: node scripts/audit.mjs --url <URL> [选项]\n\n` +
+      `  --url          目标 URL（必填）\n` +
+      `  --brand        品牌名称（默认：从域名推导）\n` +
+      `  --keywords     逗号分隔的关键词，用于 AI 引用检测\n` +
+      `  --competitors  逗号分隔的竞品域名，用于声量份额分析\n` +
+      `  --output       将 JSON 报告写入文件（默认：stdout）\n\n` +
+      `示例:\n` +
       `  node scripts/audit.mjs --url https://getsubtextai.com --brand SubtextAI\n`
     );
     process.exit(1);
@@ -553,8 +574,8 @@ async function main() {
     process.stderr.write(`[2/${TOTAL_STEPS}] 🕷️  抓取页面信号...\n`);
 
     const [lighthouseResult, crawlResult] = await Promise.all([
-      runToolSilent("lighthouse-pull.mjs", ["--url", url, "--strategy", "mobile"]),
-      runToolSilent("crawl-page.mjs",      [url]),
+      limit(() => runToolSilent("lighthouse-pull.mjs", ["--url", url, "--strategy", "mobile"])),
+      limit(() => runToolSilent("crawl-page.mjs",      [url])),
     ]);
 
     const lhOk = lighthouseResult != null;
@@ -602,8 +623,8 @@ async function main() {
     process.stderr.write(`[5/${TOTAL_STEPS}] 📊 检查内容新鲜度...\n`);
 
     const [platformResult, freshnessResult] = await Promise.all([
-      runToolSilent("platform-presence.mjs", ["--brand", brand, "--domain", domain]),
-      runToolSilent("freshness-check.mjs",   ["--url", url]),
+      limit(() => runToolSilent("platform-presence.mjs", ["--brand", brand, "--domain", domain])),
+      limit(() => runToolSilent("freshness-check.mjs",   ["--url", url])),
     ]);
 
     process.stderr.write(
