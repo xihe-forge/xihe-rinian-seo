@@ -279,6 +279,127 @@ function extractFaq($, schemas) {
   return faqs;
 }
 
+const AI_BOTS = [
+  "GPTBot",
+  "ChatGPT-User",
+  "Google-Extended",
+  "ClaudeBot",
+  "PerplexityBot",
+  "Bytespider",
+  "CCBot",
+  "Amazonbot",
+];
+
+function parseRobotsTxtForAiBots(robotsTxtContent) {
+  if (!robotsTxtContent || robotsTxtContent.trim() === "") {
+    return {
+      parsed: false,
+      aiBots: Object.fromEntries(
+        AI_BOTS.map((bot) => [bot, { status: "allowed", rule: null }])
+      ),
+      summary: { total: AI_BOTS.length, blocked: 0, allowed: AI_BOTS.length },
+    };
+  }
+
+  // Parse all user-agent sections into a map: lowercased agent -> { allow: string[], disallow: string[] }
+  const sections = {};
+  let currentAgents = [];
+
+  for (const rawLine of robotsTxtContent.split(/\r?\n/)) {
+    const line = rawLine.split("#")[0].trim(); // strip inline comments
+    if (line === "") {
+      currentAgents = [];
+      continue;
+    }
+
+    const colonIdx = line.indexOf(":");
+    if (colonIdx === -1) continue;
+
+    const field = line.slice(0, colonIdx).trim().toLowerCase();
+    const value = line.slice(colonIdx + 1).trim();
+
+    if (field === "user-agent") {
+      const agent = value.toLowerCase();
+      if (!sections[agent]) sections[agent] = { allow: [], disallow: [] };
+      currentAgents.push(agent);
+    } else if (field === "disallow") {
+      for (const agent of currentAgents) {
+        sections[agent].disallow.push(value);
+      }
+    } else if (field === "allow") {
+      for (const agent of currentAgents) {
+        sections[agent].allow.push(value);
+      }
+    }
+  }
+
+  // Determine status for a given rule set
+  function resolveStatus(rules) {
+    if (!rules) return null; // no section found
+
+    // Check if there's a Disallow: / (covers everything) or Disallow: (empty = allow all)
+    const hasDisallowAll = rules.disallow.some((v) => v === "/");
+    const hasDisallowEmpty = rules.disallow.some((v) => v === "");
+    const hasAllowRoot = rules.allow.some((v) => v === "/" || v === "");
+
+    if (hasDisallowEmpty) {
+      // Empty Disallow means "allow everything"
+      return { status: "allowed", rule: "Disallow:" };
+    }
+    if (hasDisallowAll && hasAllowRoot) {
+      // Allow takes precedence over Disallow per robots.txt spec
+      return { status: "allowed", rule: "Allow: /" };
+    }
+    if (hasDisallowAll) {
+      return { status: "blocked", rule: "Disallow: /" };
+    }
+    if (hasAllowRoot) {
+      return { status: "allowed", rule: "Allow: /" };
+    }
+    // Section exists but no definitive root-level rule
+    return { status: "allowed", rule: null };
+  }
+
+  const wildcardRules = sections["*"] || null;
+  const wildcardResult = resolveStatus(wildcardRules);
+
+  const aiBots = {};
+  for (const bot of AI_BOTS) {
+    const specificRules = sections[bot.toLowerCase()] || null;
+    const specificResult = resolveStatus(specificRules);
+
+    if (specificResult !== null) {
+      aiBots[bot] = specificResult;
+    } else {
+      // No specific section — fall back to wildcard
+      if (wildcardResult !== null) {
+        aiBots[bot] = {
+          status: wildcardResult.status,
+          rule: wildcardResult.rule,
+          fallback: wildcardResult.status === "blocked"
+            ? "wildcard_blocked"
+            : "wildcard_allowed",
+        };
+      } else {
+        // No wildcard either — default is allowed
+        aiBots[bot] = { status: "allowed", rule: null, fallback: "default_allowed" };
+      }
+    }
+  }
+
+  const blockedCount = Object.values(aiBots).filter((b) => b.status === "blocked").length;
+
+  return {
+    parsed: true,
+    aiBots,
+    summary: {
+      total: AI_BOTS.length,
+      blocked: blockedCount,
+      allowed: AI_BOTS.length - blockedCount,
+    },
+  };
+}
+
 async function crawl(rawUrl) {
   let pageRes;
   let pageText;
@@ -335,6 +456,7 @@ async function crawl(rawUrl) {
     hreflang: extractHreflang($),
     llmsTxt: llmsTxtContent,
     robotsTxt: robotsTxtContent,
+    aiBotAccess: parseRobotsTxtForAiBots(robotsTxtContent),
     sitemap: {
       exists: sitemapFetch !== null,
       url: `${origin}/sitemap.xml`,
