@@ -244,7 +244,8 @@ async function checkPage(entry, semaphore) {
             lastModified: bestDate.toISOString(),
             source: bestSource,
             daysSinceUpdate: null, // filled in after
-            status: "partial",     // GET failed but HEAD provided a date
+            status: null,          // filled in after (stale/fresh/unknown)
+            partial: true,         // GET failed but HEAD provided a date — reduced confidence
             httpStatus: httpStatus || null,
             suggestion: null,      // filled in after
           };
@@ -341,15 +342,12 @@ function classifyPage(page, threshold, checkedAt) {
 
   const days = Math.floor((now - new Date(page.lastModified)) / (1000 * 60 * 60 * 24));
 
-  // "partial" means GET failed but HEAD provided a Last-Modified — preserve that label
-  // so callers know the date is from HEAD only and full body analysis was skipped.
-  const isPartial = page.status === "partial";
-  const freshness = days > threshold ? "stale" : "fresh";
-  const status = isPartial ? "partial" : freshness;
+  // Always classify as stale/fresh based on age — partial is a data quality flag, not a status.
+  const status = days > threshold ? "stale" : "fresh";
   const suggestion =
     days > threshold
       ? `Update this page — ${days} days old, AI engines may deprioritize`
-      : isPartial
+      : page.partial
         ? "GET timed out — date signal from HEAD only, body not analyzed"
         : null;
 
@@ -357,10 +355,10 @@ function classifyPage(page, threshold, checkedAt) {
 }
 
 function computeScore(pages) {
-  // Exclude hard errors; partial pages (HEAD-only date) count as classified
-  const classified = pages.filter((p) => p.status !== "error");
+  // Exclude hard errors and unknowns; partial pages use their stale/fresh classification
+  const classified = pages.filter((p) => p.status !== "error" && p.status !== "unknown");
   if (classified.length === 0) return 0;
-  const fresh = classified.filter((p) => p.status === "fresh" || p.status === "partial").length;
+  const fresh = classified.filter((p) => p.status === "fresh").length;
   return Math.round((fresh / classified.length) * 100);
 }
 
@@ -369,7 +367,7 @@ function buildTopActions(pages, threshold) {
   const stale = pages.filter((p) => p.status === "stale");
   const unknown = pages.filter((p) => p.status === "unknown");
   const errors = pages.filter((p) => p.status === "error");
-  const partial = pages.filter((p) => p.status === "partial");
+  const partial = pages.filter((p) => p.partial === true);
 
   if (stale.length > 0) {
     actions.push(
@@ -510,7 +508,7 @@ async function main() {
   const rawPages = await Promise.all(
     urlEntries.map((entry) => {
       return checkPage(entry, semaphore).then((result) => {
-        const icon = result.status === "error" ? "!" : result.status === "partial" ? "~" : result.lastModified ? "." : "?";
+        const icon = result.status === "error" ? "!" : result.partial ? "~" : result.lastModified ? "." : "?";
         process.stderr.write(icon);
         return result;
       });
@@ -525,7 +523,7 @@ async function main() {
   const stalePages = pages.filter((p) => p.status === "stale");
   const unknownPages = pages.filter((p) => p.status === "unknown");
   const errorPages = pages.filter((p) => p.status === "error");
-  const partialPages = pages.filter((p) => p.status === "partial");
+  const partialPages = pages.filter((p) => p.partial === true);
 
   const daysKnown = pages.filter((p) => typeof p.daysSinceUpdate === "number");
   const avgDays =

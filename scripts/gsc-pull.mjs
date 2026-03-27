@@ -85,25 +85,22 @@ async function exchangeJWTForToken(jwt) {
   });
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
-  let res;
   try {
-    res = await fetch('https://oauth2.googleapis.com/token', {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: body.toString(),
       signal: controller.signal,
     });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Token exchange failed (${res.status}): ${text}`);
+    }
+    const data = await res.json();
+    return data.access_token;
+  } finally {
     clearTimeout(timer);
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
   }
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Token exchange failed (${res.status}): ${text}`);
-  }
-  const data = await res.json();
-  return data.access_token;
 }
 
 async function resolveAccessToken() {
@@ -148,9 +145,8 @@ async function fetchSearchAnalytics(siteUrl, accessToken, startDate, endDate) {
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
-  let res;
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -159,19 +155,15 @@ async function fetchSearchAnalytics(siteUrl, accessToken, startDate, endDate) {
       body,
       signal: controller.signal,
     });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`GSC API error (${res.status}): ${text}`);
+    }
+    const data = await res.json();
+    return data.rows || [];
+  } finally {
     clearTimeout(timer);
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
   }
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`GSC API error (${res.status}): ${text}`);
-  }
-
-  const data = await res.json();
-  return data.rows || [];
 }
 
 // ---------------------------------------------------------------------------
