@@ -16,7 +16,7 @@ node ${CLAUDE_SKILL_DIR}/../../scripts/negative-geo-detect.mjs \
   --baseline <基线文件路径>
 ```
 
-需要基线文件（check-ai-citation.mjs 的输出）和至少一个 API Key。
+需要基线文件（check-ai-citation.mjs 的输出）。无 API Key 时自动切换为基线扫描模式 / Without API Keys, automatically switches to baseline-only analysis mode。
 
 ## 告警类型
 

@@ -307,18 +307,14 @@ function parseRobotsTxtForAiBots(robotsTxtContent) {
   // Parse all user-agent sections into a map: lowercased agent -> { allow: string[], disallow: string[] }
   const sections = {};
   let currentAgents = [];
-  let seenDirective = false; // tracks whether any Allow/Disallow has been seen in the current group
 
   for (const rawLine of robotsTxtContent.split(/\r?\n/)) {
     const line = rawLine.split("#")[0].trim(); // strip inline comments
     if (line === "") {
-      // Only reset the group on blank line if we've already seen a directive (Allow/Disallow).
-      // A blank line between consecutive User-agent lines in the same group is legal and
-      // should not prematurely start a new group.
-      if (seenDirective) {
-        currentAgents = [];
-        seenDirective = false;
-      }
+      // Blank lines ALWAYS separate groups (RFC 9309).
+      // An empty group (User-agent with no directives) means "use wildcard fallback",
+      // which the existing fallback logic already handles correctly.
+      currentAgents = [];
       continue;
     }
 
@@ -332,17 +328,14 @@ function parseRobotsTxtForAiBots(robotsTxtContent) {
       const agent = value.toLowerCase();
       if (!sections[agent]) sections[agent] = { allow: [], disallow: [] };
       currentAgents.push(agent);
-      seenDirective = false; // new User-agent line resets the directive flag
     } else if (field === "disallow") {
       for (const agent of currentAgents) {
         sections[agent].disallow.push(value);
       }
-      seenDirective = true;
     } else if (field === "allow") {
       for (const agent of currentAgents) {
         sections[agent].allow.push(value);
       }
-      seenDirective = true;
     }
   }
 

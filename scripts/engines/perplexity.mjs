@@ -74,8 +74,6 @@ export async function query(keyword, domain) {
       urls: matched,
       snippet: extractSnippet(content, keyword, domain),
     };
-  } catch (err) {
-    return { urls: [], snippet: "", error: err.message };
   } finally {
     clearTimeout(timer);
   }

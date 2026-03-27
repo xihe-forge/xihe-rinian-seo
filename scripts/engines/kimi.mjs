@@ -82,17 +82,15 @@ export async function query(keyword, domain) {
       urls: matched,
       snippet: content ? content.slice(0, 300).replace(/\s+/g, " ").trim() : null,
     };
-  } catch (err) {
-    return { urls: [], snippet: "", error: err.message };
   } finally {
     clearTimeout(timer);
   }
 }
 
 function extractUrls(text) {
-  const pattern = /https?:\/\/[^\s)\]"'，。、）」》]+/g;
+  const pattern = /https?:\/\/[^\s)\]"'，。、）」》】〗〕？！：]+/g;
   const matches = text.matchAll(pattern);
-  return [...new Set([...matches].map((m) => m[0].replace(/[.,;:!?]+$/, "")))];
+  return [...new Set([...matches].map((m) => m[0].replace(/[.,;:!?，。！？：]+$/, "")))];
 }
 
 function matchDomain(url, domain) {

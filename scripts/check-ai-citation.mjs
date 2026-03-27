@@ -266,7 +266,7 @@ async function main() {
         results[engine.name] = engineResult;
         process.stderr.write(engineResult.cited ? "CITED\n" : "not cited\n");
       } catch (err) {
-        results[engine.name] = { cited: false, urls: [], snippet: null, error: err.message };
+        results[engine.name] = { cited: false, urls: [], snippet: null, error: err.message, failed: true };
         process.stderr.write(`ERROR: ${err.message}\n`);
       }
     }

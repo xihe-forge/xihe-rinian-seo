@@ -233,16 +233,17 @@ async function queryEngineRaw(engine, keyword) {
   // Note: this re-introduces multiple API calls for old adapters, by design.
   const allUrls = [];
   let snippet = null;
-  for (const domain of allTrackedDomains) {
-    try {
+  try {
+    for (const domain of allTrackedDomains) {
       const result = await engine.query(keyword, domain);
       for (const u of result.urls || []) {
         if (!allUrls.includes(u)) allUrls.push(u);
       }
       if (!snippet && result.snippet) snippet = result.snippet;
-    } catch {
-      // ignore per-domain errors in fallback path
     }
+  } catch (err) {
+    // A query() failure means the engine errored for this keyword — mark as incomplete.
+    return { urls: allUrls, snippet, error: err.message, incomplete: true };
   }
   return { urls: allUrls, snippet };
 }

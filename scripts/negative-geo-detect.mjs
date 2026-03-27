@@ -445,6 +445,7 @@ for (const currEntry of currentResults) {
     }
 
     // ---- Alert: sentiment shift (positive/neutral → negative) ----
+    if (curr.failed) continue;
     if (curr.sentiment?.label === "negative" && prev?.sentiment?.label && prev.sentiment.label !== "negative") {
       const sourceUrls = curr.urls ?? [];
       alerts.push({

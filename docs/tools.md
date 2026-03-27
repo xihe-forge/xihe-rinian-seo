@@ -20,9 +20,7 @@ node scripts/lighthouse-pull.mjs \
   --output data/baselines/lighthouse-latest.json
 ```
 
-输出包含：Performance、Accessibility、Best Practices、SEO 四项得分，以及各审计项通过/失败明细。
-
-默认检查 `seo` 和 `best-practices`，可通过 `--categories` 指定更多类别（如 `performance,accessibility`）。
+默认检查 `seo` 和 `best-practices` 两项得分，以及各审计项通过/失败明细。可通过 `--categories` 指定更多类别（如 `performance,accessibility`）以获取 Performance、Accessibility 等额外维度。
 
 ---
 
@@ -120,7 +118,7 @@ node scripts/generate-llms-txt.mjs \
 
 同时生成两个文件：
 - `llms.txt` — 简洁版（链接 + 一行描述）
-- `llms-full.txt` — 详细版（每页 2–3 句摘要）
+- `llms-full.txt` — 详细版（每页 2–3 句摘要），仅在指定 `--output` 时生成
 
 ---
 
@@ -235,7 +233,7 @@ node scripts/freshness-check.mjs --url https://yoursite.com
 node scripts/freshness-check.mjs --url https://yoursite.com --threshold 60 --output freshness.json
 ```
 
-**日期信号优先级：** Sitemap `<lastmod>` → Open Graph `article:modified_time` → JSON-LD `dateModified` → `<time datetime>` → HTTP `Last-Modified` 响应头。
+**日期信号采集：** 从所有来源（Sitemap `<lastmod>`、Open Graph `article:modified_time`、JSON-LD `dateModified`、`<time datetime>`、HTTP `Last-Modified` 响应头）收集全部日期信号，取其中最新的日期作为该页面的最后更新时间。
 
 输出包含：每页新鲜度状态（fresh / stale / unknown / error）、距上次更新天数、整体评分（新鲜页面占比）、`topActions`。
 

@@ -15,6 +15,8 @@ node ${CLAUDE_SKILL_DIR}/../../scripts/crawl-page.mjs <URL>
 
 ## 审计维度（满分 80）
 
+> 注意：以下评分维度由 Claude Code 根据爬虫原始数据人工评估，非自动化评分。/ Note: Scoring is performed by Claude Code based on raw crawler data, not automated scoring.
+
 | 维度 | 分值 | 检查内容 |
 |------|------|---------|
 | Schema 结构化数据 | 10 | JSON-LD 数量和类型覆盖 |

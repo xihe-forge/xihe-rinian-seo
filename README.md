@@ -26,13 +26,13 @@ Forged by [Xihe AI](https://github.com/xihe-forge), for everyone who needs to be
 ## 快速开始 / Quick Start
 
 ```bash
-# npx（无需安装 / no install needed）
-npx xihe-rinian-seo --url https://yoursite.com
-
-# 或 clone 后使用 / or clone and run
+# clone 后使用 / Clone and run
 git clone https://github.com/xihe-forge/xihe-rinian-seo.git
 cd xihe-rinian-seo && pnpm install
 npm run audit -- --url https://yoursite.com --brand "YourBrand"
+
+# 或发布到 npm 后使用 npx / Or use npx after publishing to npm
+# npx xihe-rinian-seo --url https://yoursite.com
 ```
 
 ---

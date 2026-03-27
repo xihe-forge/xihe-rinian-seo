@@ -83,11 +83,21 @@ async function exchangeJWTForToken(jwt) {
     grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
     assertion: jwt,
   });
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  let res;
+  try {
+    res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`Token exchange failed (${res.status}): ${text}`);
@@ -136,14 +146,24 @@ async function fetchSearchAnalytics(siteUrl, accessToken, startDate, endDate) {
     rowLimit: 1000,
   });
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
+  }
 
   if (!res.ok) {
     const text = await res.text();

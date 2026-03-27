@@ -192,25 +192,65 @@ async function checkPage(entry, semaphore) {
   await semaphore.acquire();
   try {
     const { url, lastmod } = entry;
-    let lastModifiedHeader = null;
+    let lastModifiedFromHead = null;
+    let lastModifiedFromGet = null;
     let html = null;
     let httpStatus = null;
+    let getFailed = false;
     let fetchError = null;
 
-    // Single GET gives us both headers and body — no need for a separate HEAD
+    // Step 1: HEAD request — fast, gets Last-Modified without downloading the body.
+    // This provides a fallback date signal when GET times out on slow/large pages.
+    try {
+      const headRes = await fetchWithTimeout(url, { method: "HEAD" });
+      lastModifiedFromHead = headRes.headers.get("last-modified") || null;
+    } catch {
+      // HEAD failure is non-fatal; we'll still try GET
+    }
+
+    // Step 2: GET request — gets both headers and body for full date extraction.
     try {
       const getRes = await fetchWithTimeout(url);
       httpStatus = getRes.status;
-      lastModifiedHeader = getRes.headers.get("last-modified") || null;
+      lastModifiedFromGet = getRes.headers.get("last-modified") || null;
       if (getRes.ok) {
         html = await getRes.text();
       }
     } catch (err) {
+      getFailed = true;
       fetchError = err.name === "AbortError" ? "timeout" : err.message;
     }
 
-    // Handle non-2xx or errors
-    if (fetchError || (httpStatus && (httpStatus < 200 || httpStatus >= 400))) {
+    // Use GET's Last-Modified if available; fall back to HEAD's Last-Modified
+    const lastModifiedHeader = lastModifiedFromGet || lastModifiedFromHead;
+
+    // If GET failed entirely but HEAD gave us a Last-Modified, return partial result
+    if (getFailed) {
+      if (lastModifiedFromHead) {
+        const d = new Date(lastModifiedFromHead);
+        if (!isNaN(d.getTime())) {
+          // Prefer sitemap lastmod over HEAD header if both exist
+          let bestDate = d;
+          let bestSource = "header";
+          if (lastmod) {
+            const sm = new Date(lastmod);
+            if (!isNaN(sm.getTime()) && sm > d) {
+              bestDate = sm;
+              bestSource = "sitemap";
+            }
+          }
+          return {
+            url,
+            lastModified: bestDate.toISOString(),
+            source: bestSource,
+            daysSinceUpdate: null, // filled in after
+            status: "partial",     // GET failed but HEAD provided a date
+            httpStatus: httpStatus || null,
+            suggestion: null,      // filled in after
+          };
+        }
+      }
+      // GET failed and no HEAD date either — report error
       return {
         url,
         lastModified: null,
@@ -218,7 +258,21 @@ async function checkPage(entry, semaphore) {
         daysSinceUpdate: null,
         status: "error",
         httpStatus: httpStatus || null,
-        error: fetchError || `HTTP ${httpStatus}`,
+        error: fetchError,
+        suggestion: null,
+      };
+    }
+
+    // Handle non-2xx GET responses
+    if (httpStatus && (httpStatus < 200 || httpStatus >= 400)) {
+      return {
+        url,
+        lastModified: null,
+        source: "unknown",
+        daysSinceUpdate: null,
+        status: "error",
+        httpStatus,
+        error: `HTTP ${httpStatus}`,
         suggestion: null,
       };
     }
@@ -286,19 +340,27 @@ function classifyPage(page, threshold, checkedAt) {
   }
 
   const days = Math.floor((now - new Date(page.lastModified)) / (1000 * 60 * 60 * 24));
-  const status = days > threshold ? "stale" : "fresh";
+
+  // "partial" means GET failed but HEAD provided a Last-Modified — preserve that label
+  // so callers know the date is from HEAD only and full body analysis was skipped.
+  const isPartial = page.status === "partial";
+  const freshness = days > threshold ? "stale" : "fresh";
+  const status = isPartial ? "partial" : freshness;
   const suggestion =
-    status === "stale"
+    days > threshold
       ? `Update this page — ${days} days old, AI engines may deprioritize`
-      : null;
+      : isPartial
+        ? "GET timed out — date signal from HEAD only, body not analyzed"
+        : null;
 
   return { ...page, daysSinceUpdate: days, status, suggestion };
 }
 
 function computeScore(pages) {
+  // Exclude hard errors; partial pages (HEAD-only date) count as classified
   const classified = pages.filter((p) => p.status !== "error");
   if (classified.length === 0) return 0;
-  const fresh = classified.filter((p) => p.status === "fresh").length;
+  const fresh = classified.filter((p) => p.status === "fresh" || p.status === "partial").length;
   return Math.round((fresh / classified.length) * 100);
 }
 
@@ -307,6 +369,7 @@ function buildTopActions(pages, threshold) {
   const stale = pages.filter((p) => p.status === "stale");
   const unknown = pages.filter((p) => p.status === "unknown");
   const errors = pages.filter((p) => p.status === "error");
+  const partial = pages.filter((p) => p.status === "partial");
 
   if (stale.length > 0) {
     actions.push(
@@ -321,6 +384,11 @@ function buildTopActions(pages, threshold) {
   if (errors.length > 0) {
     actions.push(
       `${errors.length} page${errors.length > 1 ? "s" : ""} could not be fetched — check for broken links or server errors`
+    );
+  }
+  if (partial.length > 0) {
+    actions.push(
+      `${partial.length} page${partial.length > 1 ? "s" : ""} timed out on GET — date estimated from HEAD only, body not analyzed`
     );
   }
   return actions;
@@ -442,7 +510,7 @@ async function main() {
   const rawPages = await Promise.all(
     urlEntries.map((entry) => {
       return checkPage(entry, semaphore).then((result) => {
-        const icon = result.status === "error" ? "!" : result.lastModified ? "." : "?";
+        const icon = result.status === "error" ? "!" : result.status === "partial" ? "~" : result.lastModified ? "." : "?";
         process.stderr.write(icon);
         return result;
       });
@@ -457,6 +525,7 @@ async function main() {
   const stalePages = pages.filter((p) => p.status === "stale");
   const unknownPages = pages.filter((p) => p.status === "unknown");
   const errorPages = pages.filter((p) => p.status === "error");
+  const partialPages = pages.filter((p) => p.status === "partial");
 
   const daysKnown = pages.filter((p) => typeof p.daysSinceUpdate === "number");
   const avgDays =
@@ -483,6 +552,7 @@ async function main() {
       stalePages: stalePages.length,
       unknownPages: unknownPages.length,
       errorPages: errorPages.length,
+      partialPages: partialPages.length,
       avgDaysSinceUpdate: avgDays,
       oldestPage: oldestPage
         ? { url: oldestPage.url, daysSinceUpdate: oldestPage.daysSinceUpdate }
@@ -500,6 +570,7 @@ async function main() {
   process.stderr.write(`过时:          ${stalePages.length}\n`);
   process.stderr.write(`未知:          ${unknownPages.length}\n`);
   process.stderr.write(`错误:          ${errorPages.length}\n`);
+  if (partialPages.length > 0) process.stderr.write(`部分（仅HEAD）:  ${partialPages.length}\n`);
   if (avgDays !== null) process.stderr.write(`平均更新天数:  ${avgDays} 天\n`);
   if (oldestPage) process.stderr.write(`最旧页面:      ${oldestPage.url}（${oldestPage.daysSinceUpdate} 天）\n`);
   if (topActions.length > 0) {
